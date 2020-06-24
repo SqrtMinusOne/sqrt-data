@@ -1,0 +1,37 @@
+version: "3.5"
+
+services:
+    postgres:
+        restart: unless-stopped
+        image: postgres
+        container_name: "data-pg-docker"
+        ports:
+            - 5432:5432
+        networks:
+            - postgres
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: localdbpass
+            POSTGRES_DB: data
+        volumes:
+            - postgres_data:/data/postgres
+    pgweb:
+        container_name: "data-pg-web"
+        restart: unless-stopped
+        image: sosedoff/pgweb
+        ports:
+            - 8081:8081
+        networks:
+            - postgres
+        environment:
+            DATABASE_URL: postgres://postgres:localdbpass@postgres:5432/data?sslmode=disable
+        depends_on:
+            - postgres
+
+networks:
+  postgres:
+    driver: bridge
+
+volumes:
+    postgres_data:
+    pgadmin:
