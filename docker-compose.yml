@@ -37,6 +37,14 @@ services:
             - postgres
         environment:
             Customization__AllowAdvancedQuery: "true"
+    metabase:
+        container_name: "data-metabase"
+        restart: unless-stopped
+        image: metabase/metabase
+        ports:
+            - 8083:3000
+        networks:
+            - postgres
 
 networks:
   postgres:

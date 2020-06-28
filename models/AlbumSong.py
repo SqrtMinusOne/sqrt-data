@@ -18,5 +18,5 @@ class AlbumSong(Base):
     title = sa.Column(sa.String(256), nullable=False)
     album = sa.Column(sa.String(256), nullable=False)
     artist = sa.Column(sa.String(256), nullable=False)
-    duration = sa.Column(sa.String(256), nullable=False)
+    duration = sa.Column(sa.Integer(), nullable=False)
     play_count = sa.Column(sa.String(256), nullable=False)
