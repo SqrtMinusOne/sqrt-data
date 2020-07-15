@@ -15,28 +15,30 @@ services:
             POSTGRES_DB: data
         volumes:
             - postgres_data:/data/postgres
-    pgweb:
-        container_name: "data-pg-web"
-        restart: unless-stopped
-        image: sosedoff/pgweb
-        ports:
-            - 8081:8081
-        networks:
-            - postgres
-        environment:
-            DATABASE_URL: postgres://postgres:localdbpass@postgres:5432/data?sslmode=disable
-        depends_on:
-            - postgres
-    querytree:
-        container_name: "data-querytree"
-        restart: unless-stopped
-        image: d4software/querytree
-        ports:
-            - 8082:80
-        networks:
-            - postgres
-        environment:
-            Customization__AllowAdvancedQuery: "true"
+    # pgweb:
+    #     container_name: "data-pg-web"
+    #     restart: unless-stopped
+    #     image: sosedoff/pgweb
+    #     ports:
+    #         - 8081:8081
+    #     networks:
+    #         - postgres
+    #     environment:
+    #         DATABASE_URL: postgres://postgres:localdbpass@postgres:5432/data?sslmode=disable
+    #     depends_on:
+    #         - postgres
+    # # querytree:
+    #     container_name: "data-querytree"
+    #     restart: unless-stopped
+    #     image: d4software/querytree
+    #     ports:
+    #         - 8082:80
+    #     networks:
+    #         - postgres
+    #     environment:
+    #         Customization__AllowAdvancedQuery: "true"
+    #     depends_on:
+    #         - postgres
     metabase:
         container_name: "data-metabase"
         restart: unless-stopped
@@ -45,6 +47,15 @@ services:
             - 8083:3000
         networks:
             - postgres
+        depends_on:
+            - postgres
+        environment:
+            MB_DB_TYPE: postgres
+            MB_DB_DBNAME: metabase
+            MB_DB_PORT: 5432
+            MB_DB_USER: postgres
+            MB_DB_PASS: localdbpass
+            MB_DB_HOST: postgres
 
 networks:
   postgres:
