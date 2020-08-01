@@ -39,23 +39,23 @@ services:
     #         Customization__AllowAdvancedQuery: "true"
     #     depends_on:
     #         - postgres
-    metabase:
-        container_name: "data-metabase"
-        restart: unless-stopped
-        image: metabase/metabase
-        ports:
-            - 8083:3000
-        networks:
-            - postgres
-        depends_on:
-            - postgres
-        environment:
-            MB_DB_TYPE: postgres
-            MB_DB_DBNAME: metabase
-            MB_DB_PORT: 5432
-            MB_DB_USER: postgres
-            MB_DB_PASS: localdbpass
-            MB_DB_HOST: postgres
+    #metabase:
+    #    container_name: "data-metabase"
+    #    restart: unless-stopped
+    #    image: metabase/metabase
+    #    ports:
+    #        - 8083:3000
+    #    networks:
+    #        - postgres
+    #    depends_on:
+    #        - postgres
+    #    environment:
+    #        MB_DB_TYPE: postgres
+    #        MB_DB_DBNAME: metabase
+    #        MB_DB_PORT: 5432
+    #        MB_DB_USER: postgres
+    #        MB_DB_PASS: localdbpass
+    #        MB_DB_HOST: postgres
 
 networks:
   postgres:
