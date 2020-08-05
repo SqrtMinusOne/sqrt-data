@@ -8,7 +8,7 @@ __all__ = ['DBConn']
 
 class Config:
     USER = 'postgres'
-    PASSWORD = 'localdbpass'
+    PASSWORD = 'jhjrUPEqbnz2CecYdTD7'
     DATABASE = 'data'
     HOST = 'localhost'
     PORT = 5432
