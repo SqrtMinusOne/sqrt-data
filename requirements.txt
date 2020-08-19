@@ -1,0 +1,4 @@
+pandas
+python-mpd2
+sqlalchemy
+psycopg2
