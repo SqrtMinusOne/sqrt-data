@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-__all__ = ['DBConn']
+__all__ = ['DBConn', 'Config']
 
 
 class Config:
@@ -12,6 +12,8 @@ class Config:
     DATABASE = 'data'
     HOST = 'localhost'
     PORT = 5432
+
+    MPD_CSV = '~/logs-sync/mpd/mpd_library.csv'
 
 
 class DBConn:
