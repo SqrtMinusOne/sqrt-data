@@ -5,10 +5,11 @@ import os
 from mpd import MPDClient
 from tqdm import tqdm
 
+from api import Config
 
-__all__ = ['save_library', 'CSV_PATH']
+__all__ = ['save_library']
 
-CSV_PATH = os.path.expanduser('~/logs-sync/mpd/mpd_library.csv')
+CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
 def get_year(datum):
     if datum['originaldate']:

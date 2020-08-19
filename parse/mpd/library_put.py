@@ -1,16 +1,16 @@
 import os
 import sys
 
-from api import is_updated, save_hash, DBConn
+from api import is_updated, save_hash, DBConn, Config
 from models import Base, MpdSong
-from .library_get import CSV_PATH
-
 
 __all__ = ['put_library']
 
+CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
 def put_library():
     if not is_updated(CSV_PATH):
+        print('Already saved')
         exit(0)
     DBConn()
     DBConn.create_schema('mpd', Base)
