@@ -84,3 +84,12 @@ class DBConn:
             Config.PORT, Config.DATABASE
         )
         return create_engine(url, **kwargs)
+
+    @staticmethod
+    def create_schema(schema, Base):
+        DBConn.engine.execute('CREATE SCHEMA IF NOT EXISTS mpd')
+        tables = []
+        for name, table in Base.metadata.tables.items():
+            if table.schema == schema:
+                tables.append(table)
+                Base.metadata.create_all(DBConn.engine, tables)
