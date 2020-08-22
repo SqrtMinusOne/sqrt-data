@@ -1,5 +1,5 @@
 import click
-from parse.mpd import save_library, put_library
+from parse.mpd import save_library, put_library, put_logs
 
 __all__ = ['mpd']
 
@@ -16,3 +16,7 @@ def to_csv():
 @mpd.command(help='Load the library to DB')
 def load():
     put_library()
+
+@mpd.command(help='Load the logs to DB')
+def load_logs():
+    put_logs()
