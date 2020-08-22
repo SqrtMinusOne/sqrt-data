@@ -6,10 +6,13 @@ from api import get_filenames, hash_set, list_hashes
 from cli import mpd
 
 logging.basicConfig(
-    filename='./cli.log',
     level=logging.DEBUG,
     format='%(asctime)s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler('./cli.log'),
+        logging.StreamHandler()
+    ]
 )
 
 @click.group()
