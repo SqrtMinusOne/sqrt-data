@@ -4,7 +4,14 @@ import subprocess
 
 HASH_JSON = os.path.expanduser('~/logs-sync/hash.json')
 
-__all__ = ['md5sum', 'is_updated', 'save_hash']
+__all__ = [
+    'md5sum',
+    'is_updated',
+    'save_hash',
+    'list_hashes',
+    'hash_set',
+    'get_filenames'
+]
 
 
 def md5sum(filename):
@@ -35,3 +42,32 @@ def save_hash(filename):
     os.makedirs(os.path.dirname(HASH_JSON), exist_ok=True)
     with open(HASH_JSON, 'w') as f:
         json.dump(data,  f)
+
+def hash_set(filename):
+    if is_updated(filename):
+        save_hash(filename)
+    else:
+        with open(HASH_JSON, 'r') as f:
+            data = json.load(f)
+        data[filename] = '0'
+        with open(HASH_JSON, 'w') as f:
+            json.dump(data,  f)
+
+def get_filenames():
+    data = {}
+    if os.path.exists(HASH_JSON):
+        with open(HASH_JSON, 'r') as f:
+            data = json.load(f)
+    return list(data.keys())
+
+def list_hashes():
+    data = {}
+    if os.path.exists(HASH_JSON):
+        with open(HASH_JSON, 'r') as f:
+            data = json.load(f)
+    for name, value in data.items():
+        if is_updated(name):
+            print('[UPD]\t', end='')
+        else:
+            print('[   ]\t', end='')
+        print(f"{value}\t${name}")
