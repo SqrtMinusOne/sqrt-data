@@ -14,6 +14,7 @@ class Config:
     PORT = 5432
 
     MPD_CSV = '~/logs-sync/mpd/mpd_library.csv'
+    MPD_LOG_FOLDER = '~/logs-sync/mpd/logs'
 
 
 class DBConn:
@@ -89,7 +90,7 @@ class DBConn:
 
     @staticmethod
     def create_schema(schema, Base):
-        DBConn.engine.execute('CREATE SCHEMA IF NOT EXISTS mpd')
+        DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
         tables = []
         for name, table in Base.metadata.tables.items():
             if table.schema == schema:
