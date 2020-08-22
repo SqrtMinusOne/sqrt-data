@@ -1,31 +1,32 @@
-import inquirer
 import click
+import inquirer
 
-from api import list_hashes, get_filenames, hash_set
+from api import get_filenames, hash_set, list_hashes
 from cli import mpd
+
 
 @click.group()
 def cli():
     pass
 
+
 cli.add_command(mpd)
+
 
 @cli.command()
 def hash_list():
     list_hashes()
 
+
 @cli.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
     if name is None:
-        name = inquirer.prompt([
-            inquirer.List(
-                'filename',
-                'Select filename',
-                get_filenames()
-            )
-        ])['filename']
+        name = inquirer.prompt(
+            [inquirer.List('filename', 'Select filename',
+                           get_filenames())])['filename']
     hash_set(name)
+
 
 if __name__ == '__main__':
     cli()
