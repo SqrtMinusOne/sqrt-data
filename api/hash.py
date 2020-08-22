@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import subprocess
 
@@ -39,6 +40,7 @@ def save_hash(filename):
     os.makedirs(os.path.dirname(HASH_JSON), exist_ok=True)
     with open(HASH_JSON, 'w') as f:
         json.dump(data, f)
+    logging.info('Saved hash for %s', filename)
 
 
 def hash_set(filename):

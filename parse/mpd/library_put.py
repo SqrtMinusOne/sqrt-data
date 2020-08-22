@@ -1,5 +1,9 @@
 import os
 import sys
+import logging
+
+import pandas as pd
+from tqdm import tqdm
 
 from api import is_updated, save_hash, DBConn, Config
 from models import Base, MpdSong
@@ -10,8 +14,10 @@ CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
 def put_library():
     if not is_updated(CSV_PATH):
-        print('Already saved')
-        exit(0)
+        logging.info('MPD library already saved, skipping')
+        sys.exit(0)
+    logging.info('Saving MPD Library')
+    df = pd.read_csv(CSV_PATH)
     DBConn()
     DBConn.create_schema('mpd', Base)
 
@@ -25,6 +31,7 @@ def put_library():
             if not added:
                 db.merge(song)
         db.commit()
+    save_hash(CSV_PATH)
 
 
 if __name__ == "__main__":
