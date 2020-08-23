@@ -3,7 +3,7 @@ import inquirer
 import logging
 
 from api import get_filenames, hash_set, list_hashes
-from cli import mpd
+from cli import mpd, waka
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -21,6 +21,7 @@ def cli():
 
 
 cli.add_command(mpd)
+cli.add_command(waka)
 
 
 @cli.command()

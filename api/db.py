@@ -15,12 +15,14 @@ class Config:
 
     MPD_CSV = '~/logs-sync/mpd/mpd_library.csv'
     MPD_LOG_FOLDER = '~/logs-sync/mpd/logs'
+    TEMP_DATA_FOLDER = '~/Code/Data/_data'
+
+    WAKATIME_API_KEY = b'******'
 
 
 class DBConn:
     engine = None
     Session = None
-    scoped_session
     Base = None
 
     def __init__(self, **kwargs):
