@@ -1,7 +1,9 @@
+import socket
 import json
 import logging
 import os
 from collections import deque
+from datetime import datetime
 
 import pandas as pd
 import requests
@@ -11,6 +13,7 @@ from api import Config
 __all__ = ['get_buckets']
 
 API = 'http://localhost:5600/api'
+LAST_UPD_ENTRY = f'last_updated-{socket.gethostname()}'
 
 def get_last_updated():
     data = {}
@@ -21,6 +24,7 @@ def get_last_updated():
 
 def save_last_updated(data):
     os.makedirs(os.path.dirname(os.path.expanduser(Config.AW_LAST_UPDATED)), exist_ok=True)
+    data[LAST_UPD_ENTRY] = datetime.now().isoformat()
     with open(os.path.expanduser(Config.AW_LAST_UPDATED), 'w') as f:
         json.dump(data, f)
 
@@ -49,9 +53,15 @@ def get_data(bucket_id, last_updated=None):
 
 
 def get_buckets():
+    last_updated = get_last_updated()
+    last_updated_time = last_updated.get(LAST_UPD_ENTRY, None)
+    if last_updated_time is not None:
+        last_updated_date = datetime.fromisoformat(last_updated_time).date()
+        if (datetime.now().date() == last_updated_date):
+            logging.info('Already loaded AW today')
+            return
     r = requests.get(f'{API}/0/buckets')
     buckets = r.json()
-    last_updated = get_last_updated()
     os.makedirs(os.path.expanduser(Config.AW_LOGS_FOLDER), exist_ok=True)
     for bucket in buckets.values():
         if not bucket['type'] in Config.AW_TYPES:
