@@ -34,7 +34,7 @@ def get_data(bucket_id, last_updated=None):
     data = deque()
     for event in r.json():
         data.append({
-            'id': event['id'],
+            'id': f"{bucket_id}-{event['id']}",
             'bucket_id': bucket['id'],
             'hostname': bucket['hostname'],
             'duration': event['duration'],
