@@ -19,6 +19,10 @@ class Config:
 
     WAKATIME_API_KEY = b'******'
 
+    AW_LAST_UPDATED = '~/logs-sync/aw_last_updated.json'
+    AW_LOGS_FOLDER = '~/logs-sync/aw'
+    AW_TYPES = ['afkstatus', 'currentwindow']
+
 
 class DBConn:
     engine = None
@@ -82,7 +86,6 @@ class DBConn:
         """Initialize SQLAlchemy engine from configuration parameters
         :param **kwargs: to sqlalchemy.create_engine
         """
-        config = Config()
         url = "postgresql://{0}:{1}@{2}:{3}/{4}".format(
             user or Config.USER, password or
             Config.PASSWORD, Config.HOST,
