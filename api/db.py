@@ -23,6 +23,9 @@ class Config:
     AW_LOGS_FOLDER = '~/logs-sync/aw'
     AW_TYPES = ['afkstatus', 'currentwindow']
 
+    YOUTUBE_HISTORY = '~/logs-sync/google/watch-history.json'
+    GOOGLE_API = '***REMOVED***'
+
 
 class DBConn:
     engine = None
