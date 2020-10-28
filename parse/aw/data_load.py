@@ -22,7 +22,7 @@ def load_data(dry_run=False):
         if not is_updated(f):
             continue
         try:
-            df = pd.read_csv(f, lineterminator='\n')
+            df = pd.read_csv(f, lineterminator='\n', index_col=False)
         except pd.errors.ParserError:
             if dry_run:
                 print(f'Error parsing file: {f}')
@@ -43,4 +43,10 @@ def load_data(dry_run=False):
         DBConn()
         for type_, dfs in tqdm(dfs_by_type.items()):
             for df in dfs:
-                df.to_sql(type_, schema=SCHEMA, con=DBConn.engine, if_exists='append')
+                df.to_sql(
+                    type_,
+                    schema=SCHEMA,
+                    con=DBConn.engine,
+                    if_exists='append',
+                    index=False
+                )
