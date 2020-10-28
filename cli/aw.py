@@ -5,6 +5,7 @@ from parse.aw import get_buckets, load_data
 
 __all__ = ['aw']
 
+
 @click.group(help='ActivityWatch stats')
 def aw():
     pass
@@ -16,5 +17,6 @@ def to_csv():
 
 
 @aw.command(help='Load new buckets to DB')
-def load():
-    load_data()
+@click.option('--dry-run', help='Dry run', is_flag=True)
+def load(dry_run):
+    load_data(dry_run)
