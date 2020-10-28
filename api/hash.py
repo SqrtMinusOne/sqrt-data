@@ -68,8 +68,11 @@ def list_hashes():
         with open(HASH_JSON, 'r') as f:
             data = json.load(f)
     for name, value in data.items():
-        if is_updated(name):
-            print('[UPD]\t', end='')
+        if os.path.exists(name):
+            if is_updated(name):
+                print('[UPD]\t', end='')
+            else:
+                print('[   ]\t', end='')
         else:
-            print('[   ]\t', end='')
+            print('[DEL]\t', end='')
         print(f"{value}\t${name}")
