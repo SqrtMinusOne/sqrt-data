@@ -23,6 +23,8 @@ class Config:
     AW_LOGS_FOLDER = '~/logs-sync/aw'
     AW_TYPES = ['afkstatus', 'currentwindow']
 
+    ANDROID_FILE = '~/logs-sync/google/android-history.json'
+
 
 class DBConn:
     engine = None
