@@ -78,4 +78,6 @@ def parse_android():
 def load_android():
     df = parse_android()
     DBConn()
+    DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')
+
     df.to_sql('Usage', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
