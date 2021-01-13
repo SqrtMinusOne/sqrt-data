@@ -10,10 +10,10 @@ from api import Config, DBConn, is_updated, save_hash
 
 SCHEMA = 'aw'
 
-__all__ = ['load_data']
+__all__ = ['load']
 
 
-def load_data(dry_run=False):
+def load(dry_run=False):
     files = glob.glob(
         f'{os.path.expanduser(Config.AW_LOGS_FOLDER)}/*.csv'
     )

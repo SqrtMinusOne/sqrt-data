@@ -1,25 +1,27 @@
 import pandas as pd
-import sys
 import dateutil
 import os
 from mpd import MPDClient
-from tqdm import tqdm
 
 from api import Config
 
-__all__ = ['save_library']
+__all__ = ['to_csv']
 
 CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
+
 def get_year(datum):
-    if datum['originaldate']:
-        return dateutil.parser.parse(datum['originaldate']).year
+    try:
+        if datum['originaldate']:
+            return dateutil.parser.parse(datum['originaldate']).year
+    except TypeError:
+        pass
     if datum['date']:
         return dateutil.parser.parse(datum['date']).year
     return None
 
 
-def save_library():
+def to_csv():
     mpd = MPDClient()
     mpd.connect("localhost", 6600)
 
@@ -36,4 +38,4 @@ def save_library():
 
 
 if __name__ == "__main__":
-    save_library()
+    to_csv()

@@ -8,10 +8,10 @@ from api import Config
 
 API = 'https://wakatime.com/api/v1'
 
-__all__ = ['get_dump_data']
+__all__ = ['get_data']
 
 
-def get_dump_data():
+def get_data():
     headers = {
         'Authorization':
         f'Basic {base64.b64encode(Config.WAKATIME_API_KEY).decode("utf-8")}'
