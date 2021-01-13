@@ -9,7 +9,7 @@ from api import DBConn, is_updated, save_hash, Config
 from models import Base, MpdSong, SongListened
 
 
-__all__ = ['put_logs']
+__all__ = ['load_logs']
 
 
 def get_logs_to_put():
@@ -33,7 +33,7 @@ def put_log(filename):
     save_hash(filename)
 
 
-def put_logs():
+def load_logs():
     logs = get_logs_to_put()
     if len(logs) == 0:
         logging.info('All logs are saved')

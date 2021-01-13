@@ -1,7 +1,8 @@
 import click
-from parse.mpd import save_library, put_library, put_logs
+from parse.mpd import to_csv as to_csv_mpd, load_library, load_logs as load_logs_mpd
 
 __all__ = ['mpd']
+
 
 @click.group(help='MPD stats')
 def mpd():
@@ -10,13 +11,14 @@ def mpd():
 
 @mpd.command(help='Save the library to CSV file')
 def to_csv():
-    save_library()
+    to_csv_mpd()
 
 
 @mpd.command(help='Load the library to DB')
 def load():
-    put_library()
+    load_library()
+
 
 @mpd.command(help='Load the logs to DB')
 def load_logs():
-    put_logs()
+    load_logs_mpd()

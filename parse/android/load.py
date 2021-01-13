@@ -11,7 +11,7 @@ SOURCE = os.path.expanduser(Config.ANDROID_FILE)
 SCHEMA = 'android'
 
 
-__all__ = ['load_android']
+__all__ = ['load']
 
 
 def fix_time(time):
@@ -75,7 +75,7 @@ def parse_android():
     return dfg
 
 
-def load_android():
+def load():
     df = parse_android()
     DBConn()
     DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')

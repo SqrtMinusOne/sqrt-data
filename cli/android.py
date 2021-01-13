@@ -1,6 +1,6 @@
 import click
 
-from parse.android import load_android
+from parse import android as andc
 
 
 __all__ = ['android']
@@ -13,4 +13,4 @@ def android():
 
 @android.command(help='Load to DB')
 def load():
-    load_android()
+    andc.load()

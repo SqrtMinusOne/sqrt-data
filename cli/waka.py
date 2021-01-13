@@ -1,5 +1,5 @@
 import click
-from parse.wakatime import get_dump_data, dump_load
+from parse import wakatime
 
 
 @click.group(help='WakaTime stats')
@@ -8,10 +8,10 @@ def waka():
 
 
 @waka.command(help='Download the latest WakaTime dump')
-def get_dump():
-    get_dump_data()
+def get_data():
+    wakatime.get_data()
 
 
 @waka.command(help='Load the dump to DB')
-def load_dump():
-    dump_load()
+def load():
+    wakatime.load()

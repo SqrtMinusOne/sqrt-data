@@ -1,6 +1,6 @@
 import click
 
-from parse.aw import get_buckets, load_data
+from parse import aw as awc
 
 
 __all__ = ['aw']
@@ -13,10 +13,10 @@ def aw():
 
 @aw.command(help='Save AW data to CSV files')
 def to_csv():
-    get_buckets()
+    awc.to_csv()
 
 
 @aw.command(help='Load new buckets to DB')
 @click.option('--dry-run', help='Dry run', is_flag=True)
 def load(dry_run):
-    load_data(dry_run)
+    awc.load(dry_run)

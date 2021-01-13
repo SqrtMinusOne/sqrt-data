@@ -8,11 +8,11 @@ from tqdm import tqdm
 from api import is_updated, save_hash, DBConn, Config
 from models import Base, MpdSong
 
-__all__ = ['put_library']
+__all__ = ['load_library']
 
 CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
-def put_library():
+def load_library():
     if not is_updated(CSV_PATH):
         logging.info('MPD library already saved, skipping')
         sys.exit(0)
@@ -35,4 +35,4 @@ def put_library():
 
 
 if __name__ == "__main__":
-    put_library()
+    load_library()
