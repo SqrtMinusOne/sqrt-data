@@ -11,5 +11,6 @@ else
     export CREATE_DIRS=yes
     /usr/local/bin/osync.sh --initiator=/home/pavel/logs-sync --target=ssh://pavel@45.76.36.229//home/pavel/logs-sync || exit 1
     echo "$(hostname): $(date +"%Y-%m-%d %H:%m")" >> $LOG_FILE
+    export DISPLAY=:0
     notify-send "Syncronization" "Logs submitted to the server"
 fi
