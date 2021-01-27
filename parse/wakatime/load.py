@@ -11,7 +11,7 @@ from api import Config, DBConn, is_updated, save_hash
 
 SCHEMA = 'wakatime'
 
-__all__ = ['dump_load']
+__all__ = ['load']
 
 
 def get_dfs(data):
@@ -69,7 +69,7 @@ def get_dump_file():
         return None
     return dump
 
-def dump_load():
+def load():
     DBConn()
     DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')
 
