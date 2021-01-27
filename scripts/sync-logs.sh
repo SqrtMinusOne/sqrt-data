@@ -3,7 +3,10 @@ PYTHON="/home/pavel/Programs/miniconda3/bin/python"
 CLI="/home/pavel/Code/Data/cli.py"
 DATA="$(hostname): $(date +"%Y-%m-%d")"
 LOG_FILE="/home/pavel/logs-sync/sync.log"
-if grep -Fq "$DATA" $LOG_FILE; then
+
+TODAY_SYNC=$(grep -F "$DATA" $LOG_FILE)
+
+if [ ! -z "$TODAY_SYNC" ] && [ "$1" != '-F' ]; then
     echo "Already synced today";
 else
     $PYTHON $CLI aw to-csv
