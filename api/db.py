@@ -25,6 +25,13 @@ class Config:
 
     ANDROID_FILE = '~/logs-sync/google/android-history.json'
 
+    SLEEP_FILE = '~/logs-sync/sleep/sleep-export.csv'
+    SLEEP_GEOS = {
+        'e65661c5': '******',
+        'e3336046': '******',
+        'e3336012': '******'
+       }
+
 
 class DBConn:
     engine = None
