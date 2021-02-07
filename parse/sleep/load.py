@@ -191,6 +191,7 @@ def load():
     logging.info('Records after merge: %d', len(data))
 
     df_main, df_events, df_times = get_dfs(data)
+    df_main = df_main.set_index('id')
     logging.info('Events: %d, Times: %d', len(df_events), len(df_times))
 
     df_main.to_sql('main', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
