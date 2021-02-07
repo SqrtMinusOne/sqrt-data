@@ -187,6 +187,7 @@ def get_dfs(data):
 
 def load():
     DBConn()
+    DBConn.engine.execute(f'DROP SCHEMA IF EXISTS {SCHEMA} CASCADE')
     DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')
     if not is_updated(FILE):
         logging.info('Sleep alreay loaded')
