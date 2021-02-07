@@ -3,7 +3,7 @@ import inquirer
 import logging
 
 from api import get_filenames, hash_set, list_hashes
-from cli import mpd, waka, aw, android
+from cli import mpd, waka, aw, android, sleep
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -25,6 +25,7 @@ cli.add_command(mpd)
 cli.add_command(waka)
 cli.add_command(aw)
 cli.add_command(android)
+cli.add_command(sleep)
 
 
 @cli.command()
