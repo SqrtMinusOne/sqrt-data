@@ -30,6 +30,11 @@ FILE = 'sleep-export.csv'
 KEY_SEQ = 'Id'
 NUM_COLS = set(['Id', 'Hours', 'Rating', 'Framerate', 'Snore', 'Noise', 'Cycles', 'DeepSleep', 'LenAdjust'])
 DATE = '%d. %m. %Y %H:%M'
+GEOS = {
+    'e65661c5': 'Tuymen Home',
+    'e3336046': 'Saint-Petersburg Home',
+    'e3336012': 'Saint-Petersburg Home'
+}
 with open(FILE, 'r') as f:
     lines = f.readlines()
 
@@ -101,6 +106,8 @@ def parse_csv_dict(lines):
                     tags, comment = get_tags(datum)
                     row[key] = comment
                     row['tags'] = tags
+                elif key == 'Geo':
+                    row[key] = GEOS.get(datum, datum)
                 else:
                     row[key] = datum
             row['events'] = sorted(events, key=lambda evt: evt['timestamp'])
@@ -1035,7 +1042,11 @@ def get_dfs(data):
         del datum['events']
         del datum['times']
         data_main.append(datum)
-    return pd.DataFrame(data_main), pd.DataFrame(data_events), pd.DataFrame(data_times)
+    df_main, df_events, df_times = pd.DataFrame(data_main), pd.DataFrame(data_events), pd.DataFrame(data_times)
+    df_main['merged'] = df_main['merged'].apply(lambda d: d == True)
+    df_main['cycles'] = df_main['cycles'].apply(lambda c: c if c > 0 else None)
+    df_main['deepsleep'] = df_main['deepsleep'].apply(lambda d: d if d > 0 else None)
+    return df_main, df_events, df_times
     
 df_main, df_events, df_times = get_dfs(data_2)
 display(df_main)
@@ -1046,31 +1057,31 @@ display(df_times)
 #+RESULTS:
 :RESULTS:
 #+begin_example
-     merged         comment  cycles  deepsleep  framerate                from  \
-  0    True                     7.0   0.327090    10007.0 2020-11-07 00:33:00   
-  1     NaN                     8.0   0.381818    10007.0 2020-11-07 23:06:00   
-  2    True  Manually added     0.0  -0.733851    10007.0 2020-11-08 22:55:00   
-  3     NaN  Manually added    -1.0  -1.000000    10007.0 2020-11-09 22:05:00   
-  4     NaN                     6.0   0.294643    10007.0 2020-11-10 23:25:00   
-  ..    ...             ...     ...        ...        ...                 ...   
-  90    NaN                     9.0   0.424528    10007.0 2021-02-03 00:37:00   
-  91    NaN                    11.0   0.608696    10007.0 2021-02-04 00:03:00   
-  92    NaN                    11.0   0.508621    10007.0 2021-02-05 00:18:00   
-  93    NaN                     1.0   0.235294    10007.0 2021-02-06 00:32:00   
-  94    NaN  Manually added    -1.0  -1.000000    10007.0 2021-02-06 08:20:00   
+      merged         comment  cycles  deepsleep  framerate                from  \
+  0     True                     7.0   0.327090    10007.0 2020-11-07 00:33:00   
+  1    False                     8.0   0.381818    10007.0 2020-11-07 23:06:00   
+  2     True  Manually added     NaN        NaN    10007.0 2020-11-08 22:55:00   
+  3    False  Manually added     NaN        NaN    10007.0 2020-11-09 22:05:00   
+  4    False                     6.0   0.294643    10007.0 2020-11-10 23:25:00   
+  ..     ...             ...     ...        ...        ...                 ...   
+  90   False                     9.0   0.424528    10007.0 2021-02-03 00:37:00   
+  91   False                    11.0   0.608696    10007.0 2021-02-04 00:03:00   
+  92   False                    11.0   0.508621    10007.0 2021-02-05 00:18:00   
+  93   False                     1.0   0.235294    10007.0 2021-02-06 00:32:00   
+  94   False  Manually added     NaN        NaN    10007.0 2021-02-06 08:20:00   
 
-           geo  hours             id  lenadjust  noise  rating  \
-  0              8.46  1604698391769        0.0   -1.0    3.75   
-  1              9.73  1604779570033      -40.0   -1.0    2.75   
-  2             10.11  1604865353875        0.0   -1.0    0.25   
-  3             11.16  1604948749753        0.0   -1.0    0.00   
-  4              9.33  1605039913458       -2.0   -1.0    3.50   
-  ..       ...    ...            ...        ...    ...     ...   
-  90  e65661c5   8.82  1612294661637       -5.0   -1.0    4.25   
-  91  e65661c5  10.64  1612379032796      -70.0   -1.0    4.50   
-  92  e65661c5   9.66  1612466338100      -29.0   -1.0    4.50   
-  93  e65661c5   2.80  1612553526088      -16.0   -1.0    2.25   
-  94             4.83  1612588800035        0.0   -1.0    0.00   
+              geo  hours             id  lenadjust  noise  rating  \
+  0                 8.46  1604698391769        0.0   -1.0    3.75   
+  1                 9.73  1604779570033      -40.0   -1.0    2.75   
+  2                10.11  1604865353875        0.0   -1.0    0.25   
+  3                11.16  1604948749753        0.0   -1.0    0.00   
+  4                 9.33  1605039913458       -2.0   -1.0    3.50   
+  ..          ...    ...            ...        ...    ...     ...   
+  90  Tuymen Home   8.82  1612294661637       -5.0   -1.0    4.25   
+  91  Tuymen Home  10.64  1612379032796      -70.0   -1.0    4.50   
+  92  Tuymen Home   9.66  1612466338100      -29.0   -1.0    4.50   
+  93  Tuymen Home   2.80  1612553526088      -16.0   -1.0    2.25   
+  94                4.83  1612588800035        0.0   -1.0    0.00   
 
                    sched  snore                  to                  tz    tags  
   0  2020-11-19 01:12:00   -1.0 2020-11-07 09:08:00       Europe/Moscow      []  
