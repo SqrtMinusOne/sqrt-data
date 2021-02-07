@@ -22,6 +22,15 @@ SCHEMA = 'sleep'
 FILE = os.path.expanduser(Config.SLEEP_FILE)
 GEOS = Config.SLEEP_GEOS
 
+CONSTRAINTS = """
+ALTER TABLE sleep.main DROP CONSTRAINT IF EXISTS main_pk;
+ALTER TABLE sleep.main ADD CONSTRAINT main_pk PRIMARY KEY (id);
+ALTER TABLE sleep.events DROP CONSTRAINT IF EXISTS events_sleep_fk;
+ALTER TABLE sleep.times DROP CONSTRAINT IF EXISTS events_times_fk;
+ALTER TABLE sleep.events ADD CONSTRAINT events_sleep_fk FOREIGN KEY (sleep_id) REFERENCES sleep.main(id);
+ALTER TABLE sleep.times ADD CONSTRAINT times_sleep_fk FOREIGN KEY (sleep_id) REFERENCES sleep.main(id);
+"""
+
 
 def get_tags(comment):
     tags = re.findall('#\S+', comment)
@@ -197,4 +206,5 @@ def load():
     df_main.to_sql('main', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
     df_events.to_sql('events', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
     df_times.to_sql('times', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
+    DBConn.engine.execute(CONSTRAINTS)
     save_hash(FILE)
