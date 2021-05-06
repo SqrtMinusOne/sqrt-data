@@ -16,6 +16,12 @@ def to_csv():
     awc.to_csv()
 
 
+
+@aw.command(help='Fix duplicates')
+def fix_duplicates():
+    awc.fix_duplicates()
+
+
 @aw.command(help='Load new buckets to DB')
 @click.option('--dry-run', help='Dry run', is_flag=True)
 def load(dry_run):
