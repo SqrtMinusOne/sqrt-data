@@ -10,7 +10,22 @@ from smo_data.api import Config, DBConn, is_updated, save_hash
 
 SCHEMA = 'aw'
 
-__all__ = ['load']
+__all__ = ['load', 'fix_duplicates']
+
+
+def fix_duplicates():
+    DBConn()
+    with DBConn.get_session() as db:
+        db.execute('CREATE TABLE aw.currentwindow2 (LIKE aw.currentwindow)')
+        db.execute('INSERT INTO aw.currentwindow2 SELECT DISTINCT ON (id) * FROM aw.currentwindow')
+        db.execute('DROP TABLE aw.currentwindow CASCADE')
+        db.execute('ALTER TABLE aw.currentwindow2 RENAME TO currentwindow')
+
+        db.execute('CREATE TABLE aw.afkstatus2 (LIKE aw.afkstatus)')
+        db.execute('INSERT INTO aw.afkstatus2 SELECT DISTINCT ON (id) * FROM aw.afkstatus')
+        db.execute('DROP TABLE aw.afkstatus CASCADE')
+        db.execute('ALTER TABLE aw.afkstatus2 RENAME TO afkstatus')
+        db.commit()
 
 
 def load(dry_run=False):
