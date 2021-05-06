@@ -58,6 +58,9 @@ def load(dry_run=False):
         DBConn()
         for type_, dfs in tqdm(dfs_by_type.items()):
             for df in dfs:
+                ids = ', '.join([f"'{id_}'" for id_ in df.id])
+                if len(ids) > 0:
+                    DBConn.engine.execute(f'DELETE FROM {SCHEMA}.{type_} WHERE id IN ({ids})')
                 df.to_sql(
                     type_,
                     schema=SCHEMA,
