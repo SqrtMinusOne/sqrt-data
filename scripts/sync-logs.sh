@@ -1,6 +1,6 @@
 #!/bin/bash
 PYTHON="/home/pavel/Programs/miniconda3/bin/python"
-CLI="/home/pavel/Code/Data/cli.py"
+CLI="/home/pavel/Code/VPS/Data/cli.py"
 DATA="$(hostname): $(date +"%Y-%m-%d")"
 LOG_FILE="/home/pavel/logs-sync/sync.log"
 
