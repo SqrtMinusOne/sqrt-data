@@ -1,6 +1,6 @@
-#!/bin/bash
-PYTHON="/home/pavel/Programs/miniconda3/bin/python"
-CLI="/home/pavel/Code/VPS/Data/cli.py"
+#!/usr/bin/env bash
+PYTHON="/home/pavel/.conda/envs/data/bin/python"
+CLI="-m smo_data"
 DATA="$(hostname): $(date +"%Y-%m-%d")"
 LOG_FILE="/home/pavel/logs-sync/sync.log"
 
@@ -12,7 +12,8 @@ else
     $PYTHON $CLI aw to-csv
     export RSYNC_EXCLUDE_PATTERN="sync.log"
     export CREATE_DIRS=yes
-    /usr/local/bin/osync.sh --initiator=/home/pavel/logs-sync --target=ssh://pavel@45.76.36.229//home/pavel/logs-sync || exit 1
+    export REMOTE_HOST_PING=false
+    osync.sh --initiator=/home/pavel/logs-sync --target=ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync || exit 1
     echo "$(hostname): $(date +"%Y-%m-%d %H:%m")" >> $LOG_FILE
     export DISPLAY=:0
     notify-send "Syncronization" "Logs submitted to the server"
