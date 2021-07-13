@@ -3,7 +3,7 @@ import logging
 import click
 import inquirer
 
-from smo_data.api import get_filenames, hash_set, list_hashes
+from smo_data.api import Config, get_filenames, hash_set, list_hashes
 from smo_data.cli import android, aw, mpd, service, sleep, waka
 
 logging.basicConfig(
@@ -16,8 +16,14 @@ logging.basicConfig(
 
 
 @click.group()
-def cli():
-    pass
+@click.option(
+    '-c',
+    '--config-path',
+    required=False,
+    help='path to JSON config or "no" to ignore'
+)
+def cli(config_path):
+    Config.load_config(config_path)
 
 
 cli.add_command(mpd)
@@ -40,7 +46,7 @@ def hash_toggle(name):
     if name is None:
         name = inquirer.prompt(
             [inquirer.List('filename', 'Select filename', get_filenames())]
-        )['filename'] # type: ignore
+        )['filename']  # type: ignore
     hash_set(name)
 
 
