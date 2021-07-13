@@ -1,18 +1,17 @@
-import click
-import inquirer
 import logging
 
+import click
+import inquirer
+
 from smo_data.api import get_filenames, hash_set, list_hashes
-from smo_data.cli import mpd, waka, aw, android, sleep
+from smo_data.cli import android, aw, mpd, service, sleep, waka
 
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.FileHandler('./cli.log'),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler('./cli.log'),
+              logging.StreamHandler()]
 )
 
 
@@ -26,6 +25,7 @@ cli.add_command(waka)
 cli.add_command(aw)
 cli.add_command(android)
 cli.add_command(sleep)
+cli.add_command(service)
 
 
 @cli.command()
@@ -39,8 +39,8 @@ def hash_toggle(name):
     logging.info('Toggled hash for %s', name)
     if name is None:
         name = inquirer.prompt(
-            [inquirer.List('filename', 'Select filename',
-                           get_filenames())])['filename']
+            [inquirer.List('filename', 'Select filename', get_filenames())]
+        )['filename'] # type: ignore
     hash_set(name)
 
 

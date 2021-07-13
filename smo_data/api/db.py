@@ -13,24 +13,30 @@ class Config:
     HOST = 'localhost'
     PORT = 5432
 
-    MPD_CSV = '~/logs-sync/mpd/mpd_library.csv'
-    MPD_LOG_FOLDER = '~/logs-sync/mpd/logs'
+    ROOT = '~/logs-sync-debug'
+
+    MPD_CSV = ROOT + '/mpd/mpd_library.csv'
+    MPD_LOG_FOLDER = ROOT + '/mpd/logs'
     TEMP_DATA_FOLDER = '~/Code/Data/_data'
+    HASH_JSON = ROOT + '/hash.json'
 
     WAKATIME_API_KEY = b'******'
 
-    AW_LAST_UPDATED = '~/logs-sync/aw_last_updated.json'
-    AW_LOGS_FOLDER = '~/logs-sync/aw'
+    AW_LAST_UPDATED = ROOT + '/aw_last_updated.json'
+    AW_LOGS_FOLDER = ROOT + '/aw'
     AW_TYPES = ['afkstatus', 'currentwindow']
 
-    ANDROID_FILE = '~/logs-sync/google/android-history.json'
+    ANDROID_FILE = ROOT + '/google/android-history.json'
 
-    SLEEP_FILE = '~/logs-sync/sleep/sleep-export.csv'
+    SLEEP_FILE = ROOT + '/sleep/sleep-export.csv'
     SLEEP_GEOS = {
         'e65661c5': '******',
         'e3336046': '******',
         'e3336012': '******'
        }
+
+    ARCHIVE_DAYS = 31
+    ARCHIVE_TIMEOUT = 5
 
 
 class DBConn:

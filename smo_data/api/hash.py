@@ -3,7 +3,9 @@ import logging
 import os
 import subprocess
 
-HASH_JSON = os.path.expanduser('~/logs-sync/hash.json')
+from .db import Config
+
+HASH_JSON = os.path.expanduser(Config.HASH_JSON)
 
 __all__ = [
     'md5sum', 'is_updated', 'save_hash', 'list_hashes', 'hash_set',
