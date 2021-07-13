@@ -1,0 +1,314 @@
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://gongzhitaao.org/orgcss/org.css"/>
+#+PROPERTY: header-args:python :session *data*
+#+PROPERTY: header-args:python+ :exports both
+#+PROPERTY: header-args:python+ :tangle yes
+#+PROPERTY: header-args:python+ :async yes
+
+#+begin_src elisp :exports none
+(setq-local org-image-actual-width '(1024))
+(setq-local org-html-htmlize-output-type 'css)
+(setq-local org-latex-listings 'minted)
+#+end_src
+
+#+RESULTS:
+: minted
+* Parsing
+#+begin_src python
+import pandas as pd
+import copy
+import re
+from dateutil import parser
+from datetime import datetime, timedelta, time
+from collections import deque
+from IPython.display import display
+#+end_src
+
+#+RESULTS:
+
+#+begin_src python
+FILE = 'sleep-export.csv'
+KEY_SEQ = 'Id'
+NUM_COLS = set(['Id', 'Hours', 'Rating', 'Framerate', 'Snore', 'Noise', 'Cycles', 'DeepSleep', 'LenAdjust'])
+DATE = '%d. %m. %Y %H:%M'
+GEOS = {
+    'e65661c5': '******',
+    'e3336046': '******',
+    'e3336012': '******'
+}
+with open(FILE, 'r') as f:
+    lines = f.readlines()
+
+len(lines)
+#+end_src
+
+#+RESULTS:
+: 209
+
+#+begin_src python
+def get_tags(comment):
+    tags = re.findall('#\S+', comment)
+    for i, tag in enumerate(tags):
+        comment = comment.replace(tag, '')
+        tags[i] = tag[1:]
+    comment = comment.strip()
+    return tags, comment
+
+def parse_event(event):
+    values = event.split('-')
+    return {
+        'kind': values[0],
+        'timestamp': int(values[1]),
+        'time': datetime.utcfromtimestamp(int(values[1]) / 1000),
+        'data': values[2:]
+    }
+
+datetime.strptime('07. 02. 2021 9:15', DATE)
+#+end_src
+
+#+RESULTS:
+: datetime.datetime(2021, 2, 7, 9, 15)
+
+#+begin_src python :display plain
+from pprint import pprint
+
+def parse_csv_dict(lines):
+    keys = None
+    result = []
+    for line in lines:
+        if line.endswith('\n'):
+            line = line[:-1]
+        if keys is None:
+            if line.startswith(KEY_SEQ):
+                keys = line.split(',')
+            else:
+                continue
+        else:
+            row = {}
+            events = []
+            times = {}
+            data = line.split(',')
+            for key, datum in zip(keys, data):
+                if datum.startswith('"'):
+                    datum = datum[1:-1]
+                if key.startswith('"'):
+                    key = key[1:-1]
+                if key == 'Event':
+                    events.append(parse_event(datum))
+                elif re.fullmatch(r'^\d+:\d+$', key):
+                    times[key] = float(datum)
+                elif key == 'From' or key == 'To' or key == 'Sched':
+                    row[key] = datetime.strptime(datum, DATE)
+                elif key == 'Id':
+                    row['Id'] = int(datum)
+                elif key in NUM_COLS:
+                    row[key] = float(datum)
+                elif key == 'Comment':
+                    tags, comment = get_tags(datum)
+                    row[key] = comment
+                    row['tags'] = tags
+                elif key == 'Geo':
+                    row[key] = GEOS.get(datum, datum)
+                else:
+                    row[key] = datum
+            row['events'] = sorted(events, key=lambda evt: evt['timestamp'])
+            row['times'] = times
+            keys = None
+            result.append(row)
+    result = sorted(result, key=lambda datum: datum['From'])
+    return result
+
+data = parse_csv_dict(lines)
+pprint(data[0])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  {'Comment': '',
+   'Cycles': 1.0,
+   'DeepSleep': 0.6956522,
+   'Framerate': 10007.0,
+   'From': datetime.datetime(2020, 11, 7, 0, 33),
+   'Geo': '',
+   'Hours': 0.39,
+   'Id': 1604698391769,
+   'LenAdjust': -1.0,
+   'Noise': -1.0,
+   'Rating': 0.0,
+   'Sched': datetime.datetime(2020, 11, 19, 1, 12),
+   'Snore': -1.0,
+   'To': datetime.datetime(2020, 11, 7, 0, 56),
+   'Tz': 'Europe/Moscow',
+   'events': [{'data': [],
+               'kind': 'NO_AWAKE',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 769000),
+               'timestamp': 1604698391769},
+              {'data': ['1.9839158E', '38'],
+               'kind': 'DHA',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 769000),
+               'timestamp': 1604698391769},
+              {'data': [],
+               'kind': 'BROKEN_START',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 769000),
+               'timestamp': 1604698391769},
+              {'data': ['3.761582E', '37'],
+               'kind': 'DHA',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 770000),
+               'timestamp': 1604698391770},
+              {'data': [],
+               'kind': 'DHA',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 771000),
+               'timestamp': 1604698391771},
+              {'data': [],
+               'kind': 'DHA',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 772000),
+               'timestamp': 1604698391772},
+              {'data': [],
+               'kind': 'DHA',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 11, 773000),
+               'timestamp': 1604698391773},
+              {'data': [],
+               'kind': 'LUX',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 12, 214000),
+               'timestamp': 1604698392214},
+              {'data': [],
+               'kind': 'TRACKING_PAUSED',
+               'time': datetime.datetime(2020, 11, 6, 21, 33, 16, 693000),
+               'timestamp': 1604698396693},
+              {'data': [],
+               'kind': 'BROKEN_END',
+               'time': datetime.datetime(2020, 11, 6, 21, 34, 11, 769000),
+               'timestamp': 1604698451769},
+              {'data': [],
+               'kind': 'LIGHT_START',
+               'time': datetime.datetime(2020, 11, 6, 21, 34, 11, 769000),
+               'timestamp': 1604698451769},
+              {'data': [],
+               'kind': 'TRACKING_RESUMED',
+               'time': datetime.datetime(2020, 11, 6, 21, 35, 9, 442000),
+               'timestamp': 1604698509442},
+              {'data': [],
+               'kind': 'LIGHT_END',
+               'time': datetime.datetime(2020, 11, 6, 21, 39, 11, 769000),
+               'timestamp': 1604698751769},
+              {'data': [],
+               'kind': 'DEEP_START',
+               'time': datetime.datetime(2020, 11, 6, 21, 39, 11, 769000),
+               'timestamp': 1604698751769},
+              {'data': [],
+               'kind': 'LIGHT_START',
+               'time': datetime.datetime(2020, 11, 6, 21, 55, 11, 769000),
+               'timestamp': 1604699711769},
+              {'data': [],
+               'kind': 'DEEP_END',
+               'time': datetime.datetime(2020, 11, 6, 21, 55, 11, 769000),
+               'timestamp': 1604699711769},
+              {'data': [],
+               'kind': 'DEVICE',
+               'time': datetime.datetime(2020, 11, 6, 21, 56, 51, 970000),
+               'timestamp': 1604699811970},
+              {'data': [],
+               'kind': 'TRACKING_STOPPED_BY_USER',
+               'time': datetime.datetime(2020, 11, 6, 21, 56, 51, 971000),
+               'timestamp': 1604699811971},
+              {'data': [],
+               'kind': 'LIGHT_END',
+               'time': datetime.datetime(2020, 11, 6, 21, 57, 11, 769000),
+               'timestamp': 1604699831769}],
+   'tags': [],
+   'times': {'0:34': -0.01,
+             '0:35': 3.3788679,
+             '0:36': 4.543605,
+             '0:37': 4.2311726,
+             '0:38': 1.5838166,
+             '0:39': 7.727542,
+             '0:40': 0.0,
+             '0:41': 0.0,
+             '0:42': 0.0,
+             '0:43': 0.0,
+             '0:44': 0.0,
+             '0:45': 0.0,
+             '0:46': 0.0,
+             '0:47': 0.0,
+             '0:48': 0.0,
+             '0:49': 0.0,
+             '0:50': 0.0,
+             '0:51': 0.0,
+             '0:52': 0.0,
+             '0:53': 0.0,
+             '0:54': 0.0,
+             '0:55': 10.0,
+             '0:56': 3.0484104}}
+#+end_example
+
+#+begin_src python
+def merge_data(data):
+    data = copy.deepcopy(data)
+    i, k = 0, 1
+    result = []
+    while i < len(data) - 1:
+        a = data[i]
+        b = data[i+k]
+        if (b['From'] - a['To']) < timedelta(seconds=60*20):
+            print(i, b['From'], a['To'], b['From'] - a['To'])
+            data[i] = {
+                'merged': True,
+                'Comment': b['Comment'],
+                'Cycles': a['Cycles'] + b['Cycles'],
+                'DeepSleep': (a['DeepSleep'] * a['Hours'] + b['DeepSleep'] * b['Hours']) / (a['Hours'] + b['Hours']),
+                'Framerate': b['Framerate'],
+                'From': a['From'],
+                'Geo': b['Geo'],
+                'Hours': a['Hours'] + b['Hours'],
+                'Id': a['Id'],
+                'LenAdjust': b['LenAdjust'],
+                'Noise': max(a['Noise'], b['Noise']),
+                'Rating': b['Rating'],
+                'Sched': a['Sched'],
+                'Snore': max(a['Snore'], b['Snore']),
+                'To': b['To'],
+                'Tz': b['Tz'],
+                'events': sorted([*a['events'], *b['events']], key=lambda evt: evt['timestamp']),
+                'tags': list(set([*a['tags'], *b['tags']])),
+                'times': {**a['times'], **b['times']}
+            }
+            k += 1
+        else:
+            result.append(data[i])
+            i += k
+            k = 1
+    return result
+
+data_2 = merge_data(data)
+print(len(data), len(data_2))
+pprint(data_2[0])
+#+end_src
+
+#+RESULTS:
+* Put
+#+begin_src python :display plain
+def get_dfs(data):
+    data_main = deque()
+    data_events = deque()
+    data_times = deque()
+    for datum in data:
+        datum = {key.lower(): value for key, value in datum.items()}
+        for event in datum['events']:
+            data_events.append({**event, 'sleep_id': datum['id']})
+        for time_, value in datum['times'].items():
+            data_times.append({'time': datetime.strptime(time_, '%H:%M').time(), 'value': value, 'sleep_id': datum['id']})
+        del datum['events']
+        del datum['times']
+        data_main.append(datum)
+    df_main, df_events, df_times = pd.DataFrame(data_main), pd.DataFrame(data_events), pd.DataFrame(data_times)
+    df_main['merged'] = df_main['merged'].apply(lambda d: d == True)
+    df_main['cycles'] = df_main['cycles'].apply(lambda c: c if c > 0 else None)
+    df_main['deepsleep'] = df_main['deepsleep'].apply(lambda d: d if d > 0 else None)
+    return df_main, df_events, df_times
+
+df_main, df_events, df_times = get_dfs(data_2)
+display(df_main)
+display(df_events)
+display(df_times)
+#+end_src
+
+#+RESULTS:

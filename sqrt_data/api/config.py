@@ -7,7 +7,7 @@ __all__ = ['Config']
 
 class Config:
     USER = 'postgres'
-    PASSWORD = '******'
+    PASSWORD = 'localdbpass'
     DATABASE = 'data'
     HOST = 'localhost'
     PORT = 5432
@@ -16,10 +16,10 @@ class Config:
 
     MPD_CSV = ''
     MPD_LOG_FOLDER = ''
-    TEMP_DATA_FOLDER = '~/Code/Data/_data'
+    TEMP_DATA_FOLDER = '/tmp/sqrt-data'
     HASH_JSON = ''
 
-    WAKATIME_API_KEY = b'******'
+    WAKATIME_API_KEY = b'dummy'
 
     AW_LAST_UPDATED = ''
     AW_LOGS_FOLDER = ''
@@ -28,11 +28,7 @@ class Config:
     ANDROID_FILE = ''
 
     SLEEP_FILE = ''
-    SLEEP_GEOS = {
-        'e65661c5': '******',
-        'e3336046': '******',
-        'e3336012': '******'
-    }
+    SLEEP_GEOS = {}
 
     ARCHIVE_DAYS = 31
     ARCHIVE_TIMEOUT = 5
@@ -68,4 +64,10 @@ class Config:
                 if not hasattr(cls, key):
                     logging.warn('Wrong attribute %s', key)
                 setattr(cls, key, value)
+
         cls._update_paths()
+
+        cls.WAKATIME_API_KEY = bytes(cls.WAKATIME_API_KEY, 'utf8') # type: ignore
+
+        if not os.path.exists(cls.TEMP_DATA_FOLDER):
+            os.makedirs(cls.TEMP_DATA_FOLDER)
