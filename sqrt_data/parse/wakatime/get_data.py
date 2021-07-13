@@ -4,7 +4,7 @@ import os
 
 import requests
 
-from smo_data.api import Config
+from sqrt_data.api import Config
 
 API = 'https://wakatime.com/api/v1'
 

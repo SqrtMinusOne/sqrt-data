@@ -3,8 +3,8 @@ import pandas as pd
 import os
 import sys
 
-from smo_data.api import DBConn
-from smo_data.models import VkMessage, VkUser, Base
+from sqrt_data.api import DBConn
+from sqrt_data.models import VkMessage, VkUser, Base
 
 from bs4 import BeautifulSoup
 from collections import deque

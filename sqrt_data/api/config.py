@@ -58,7 +58,7 @@ class Config:
             config_root = os.environ.get(
                 'XDG_CONFIG_HOME', os.path.expanduser('~/.config')
             )
-            path = os.path.join(config_root, 'smo-data', 'config.json')
+            path = os.path.join(config_root, 'sqrt-data', 'config.json')
             if not os.path.exists(path):
                 logging.warn('Config not found at %s', path)
                 return
@@ -69,5 +69,3 @@ class Config:
                     logging.warn('Wrong attribute %s', key)
                 setattr(cls, key, value)
         cls._update_paths()
-        import ipdb
-        ipdb.set_trace()

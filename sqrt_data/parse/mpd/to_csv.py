@@ -3,7 +3,7 @@ import dateutil
 import os
 from mpd import MPDClient
 
-from smo_data.api import Config
+from sqrt_data.api import Config
 
 __all__ = ['to_csv']
 

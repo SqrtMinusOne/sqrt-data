@@ -1,5 +1,5 @@
 import click
-from smo_data.parse.mpd import to_csv as to_csv_mpd, load_library, load_logs as load_logs_mpd
+from sqrt_data.parse.mpd import to_csv as to_csv_mpd, load_library, load_logs as load_logs_mpd
 
 __all__ = ['mpd']
 

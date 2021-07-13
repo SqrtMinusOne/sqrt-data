@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 import requests
 
-from smo_data.api import Config
+from sqrt_data.api import Config
 
 __all__ = ['to_csv']
 

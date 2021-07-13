@@ -5,8 +5,8 @@ import logging
 import pandas as pd
 from tqdm import tqdm
 
-from smo_data.api import is_updated, save_hash, DBConn, Config
-from smo_data.models import Base, MpdSong
+from sqrt_data.api import is_updated, save_hash, DBConn, Config
+from sqrt_data.models import Base, MpdSong
 
 __all__ = ['load_library']
 

@@ -5,7 +5,7 @@ import re
 from tqdm import tqdm
 import logging
 
-from smo_data.api import Config, DBConn, is_updated, save_hash
+from sqrt_data.api import Config, DBConn, is_updated, save_hash
 
 
 SCHEMA = 'aw'

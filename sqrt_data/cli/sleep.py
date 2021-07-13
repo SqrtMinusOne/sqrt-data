@@ -1,5 +1,5 @@
 import click
-from smo_data.parse import sleep as sleep_
+from sqrt_data.parse import sleep as sleep_
 
 
 @click.group(help='SleepAsAndroid stats')

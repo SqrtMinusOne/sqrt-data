@@ -3,8 +3,8 @@ import logging
 import click
 import inquirer
 
-from smo_data.api import Config, get_filenames, hash_set, list_hashes
-from smo_data.cli import android, aw, mpd, service, sleep, waka
+from sqrt_data.api import Config, get_filenames, hash_set, list_hashes
+from sqrt_data.cli import android, aw, mpd, service, sleep, waka
 
 logging.basicConfig(
     level=logging.DEBUG,

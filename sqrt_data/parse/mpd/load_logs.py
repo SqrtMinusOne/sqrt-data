@@ -5,8 +5,8 @@ import glob
 from tqdm import tqdm
 import logging
 
-from smo_data.api import DBConn, is_updated, save_hash, Config
-from smo_data.models import Base, MpdSong, SongListened
+from sqrt_data.api import DBConn, is_updated, save_hash, Config
+from sqrt_data.models import Base, MpdSong, SongListened
 
 
 __all__ = ['load_logs']

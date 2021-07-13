@@ -1,6 +1,6 @@
 import click
 
-from smo_data import service as sc
+from sqrt_data import service as sc
 
 __all__ = ['service']
 

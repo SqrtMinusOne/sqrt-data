@@ -7,7 +7,7 @@ from collections import deque
 import pandas as pd
 from tqdm import tqdm
 
-from smo_data.api import Config, DBConn, is_updated, save_hash
+from sqrt_data.api import Config, DBConn, is_updated, save_hash
 
 SCHEMA = 'wakatime'
 

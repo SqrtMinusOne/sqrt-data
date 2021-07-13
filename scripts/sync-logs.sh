@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 PYTHON="/home/pavel/.conda/envs/data/bin/python"
-CLI="-m smo_data"
+CLI="-m sqrt_data"
 DATA="$(hostname): $(date +"%Y-%m-%d")"
 LOG_FILE="/home/pavel/logs-sync/sync.log"
 

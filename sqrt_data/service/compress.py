@@ -7,7 +7,7 @@ import time
 
 import pandas as pd
 
-from smo_data.api import Config
+from sqrt_data.api import Config
 
 __all__ = ['compress']
 

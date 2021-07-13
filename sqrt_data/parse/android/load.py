@@ -4,7 +4,7 @@ from urllib.parse import urlparse, parse_qs
 import re
 import os
 
-from smo_data.api import DBConn, Config
+from sqrt_data.api import DBConn, Config
 
 
 SOURCE = os.path.expanduser(Config.ANDROID_FILE)

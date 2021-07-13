@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name='smo_data',
+    name='sqrt_data',
     version='2.0.0',
     description=
     'A collection of scripts to gather various data from my machines and store it on my VPS',
@@ -14,5 +14,5 @@ setup(
     ],
     entry_points='''
     [console_scripts]
-    smo_data=smo_data.manage:cli
+    sqrt_data=sqrt_data.manage:cli
     ''')

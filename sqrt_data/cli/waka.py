@@ -1,5 +1,5 @@
 import click
-from smo_data.parse import wakatime
+from sqrt_data.parse import wakatime
 
 
 @click.group(help='WakaTime stats')

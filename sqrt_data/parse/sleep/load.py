@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, time
 from collections import deque
 import logging
 
-from smo_data.api import is_updated, save_hash, DBConn, Config
+from sqrt_data.api import is_updated, save_hash, DBConn, Config
 
 __all__ = ['load']
 

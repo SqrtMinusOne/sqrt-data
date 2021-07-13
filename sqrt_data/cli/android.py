@@ -1,6 +1,6 @@
 import click
 
-from smo_data.parse import android as andc
+from sqrt_data.parse import android as andc
 
 
 __all__ = ['android']

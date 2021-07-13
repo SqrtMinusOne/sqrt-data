@@ -1,6 +1,6 @@
 import click
 
-from smo_data.parse import aw as awc
+from sqrt_data.parse import aw as awc
 
 
 __all__ = ['aw']
