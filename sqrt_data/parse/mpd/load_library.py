@@ -10,14 +10,14 @@ from sqrt_data.models import Base, MpdSong
 
 __all__ = ['load_library']
 
-CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
 def load_library():
-    if not is_updated(CSV_PATH):
+    csv_path = os.path.expanduser(Config.MPD_CSV)
+    if not is_updated(csv_path):
         logging.info('MPD library already saved, skipping')
         sys.exit(0)
     logging.info('Saving MPD Library')
-    df = pd.read_csv(CSV_PATH)
+    df = pd.read_csv(csv_path)
     DBConn()
     DBConn.create_schema('mpd', Base)
 
@@ -31,7 +31,7 @@ def load_library():
             if not added:
                 db.merge(song)
         db.commit()
-    save_hash(CSV_PATH)
+    save_hash(csv_path)
 
 
 if __name__ == "__main__":
