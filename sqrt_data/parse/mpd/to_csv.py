@@ -1,13 +1,11 @@
-import pandas as pd
-import dateutil
 import os
-from mpd import MPDClient
 
+import dateutil
+import pandas as pd
+from mpd import MPDClient
 from sqrt_data.api import Config
 
 __all__ = ['to_csv']
-
-CSV_PATH = os.path.expanduser(Config.MPD_CSV)
 
 
 def get_year(datum):
@@ -33,8 +31,10 @@ def to_csv():
     df.duration = df.time
     df['album_artist'] = df.albumartist
 
-    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
-    df.to_csv(CSV_PATH, index=False)
+    csv_path = os.path.expanduser(Config.MPD_CSV)
+
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    df.to_csv(csv_path, index=False)
 
 
 if __name__ == "__main__":
