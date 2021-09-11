@@ -9,11 +9,12 @@ import pandas as pd
 import requests
 
 from sqrt_data.api import Config
+from sqrt_data.utils import get_hostname
 
 __all__ = ['to_csv']
 
 API = 'http://localhost:5600/api'
-LAST_UPD_ENTRY = f'last_updated-{socket.gethostname()}'
+LAST_UPD_ENTRY = f'last_updated-{get_hostname()}'
 
 def get_last_updated():
     data = {}
