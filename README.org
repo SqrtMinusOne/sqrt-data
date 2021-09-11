@@ -1,8 +1,67 @@
 #+TITLE: sqrt-data
+#+PROPERTY: header-args:python :comments link
+#+HUGO_ALIASES: /sqrt-data
 
-A collection of scripts to gather various data from various sources and store it on my VPS.
+[[https://forthebadge.com/images/badges/works-on-my-machine.svg]]
 
-* Android setup
+This is an agglomeration of self-quantification scripts I've written over the years.
+
+The basic ideas are as follows:
+- I don't want to do a lot of (or any) manual work to collect the data. I'd rather have tools collect statistics in background so I could process them later.
+- The tools have to be able to give away the data in machine-readable formats.
+- Wherever possible, I want to own my data.
+
+It's unlikely that you'll be to run the project as it is, as it's tuned pretty closely to my particular workflows and needs (hence the badge). Nevertheless, you may find something useful here.
+
+The project is written with [[https://en.wikipedia.org/wiki/Literate_programming][literate programming]] paradigm with Emacs' [[https://orgmode.org/worg/org-contrib/babel/intro.html][Org Mode]] as a backend. This file contains basic information and common logic, necessary for the individual components.
+
+* Architecture
+TODO
+
+* Python CLI
+** Common API
+#+begin_src python :tangle sqrt_data/api/__init__.py
+from .db import *
+from .hash import *
+from .config import *
+#+end_src
+
+*** Configuration
+Let's start with configuration.
+
+My configuration library of choice for Python is [[https://github.com/rochacbruno/dynaconf][dynaconf]]. I like it because it allows for some simple logic in the config files, like dynamic variables.
+
+** Misc
+*** setup.py and requirements
+#+begin_src python :tangle setup.py
+from setuptools import find_packages, setup
+
+setup(
+    name='sqrt_data',
+    version='2.0.1',
+    description=
+    'A collection of scripts to gather various data from my machines and store it on my VPS',
+    author='SqrtMinusOne',
+    author_email='thexcloud@gmail.com',
+    packages=find_packages(),
+    install_requires=[
+        'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
+        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4'
+    ],
+    entry_points='''
+    [console_scripts]
+    sqrt_data=sqrt_data.manage:cli
+    ''')
+#+end_src
+
+#+begin_src text :tangle requirements.txt
+pandas
+python-mpd2
+sqlalchemy
+psycopg2
+#+end_src
+* Notes
+** Android setup
 Add to =.bashrc=:
 #+begin_src bash
 export ANDROID_PHONE="orchid"

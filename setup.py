@@ -1,3 +1,4 @@
+# [[file:README.org::*setup.py and requirements][setup.py and requirements:1]]
 from setuptools import find_packages, setup
 
 setup(
@@ -16,3 +17,4 @@ setup(
     [console_scripts]
     sqrt_data=sqrt_data.manage:cli
     ''')
+# setup.py and requirements:1 ends here
