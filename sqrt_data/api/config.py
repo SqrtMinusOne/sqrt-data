@@ -6,9 +6,9 @@ from dynaconf import Dynaconf
 __all__ = ['settings']
 
 settings = Dynaconf(
-    setttings_files=[
+    settings_files=[
         'config.toml',
         os.path.expanduser('~/.config/sqrt-data/config.toml')
-    ]
+    ],
 )
 # Configuration:1 ends here

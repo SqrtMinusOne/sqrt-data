@@ -43,10 +43,10 @@ from dynaconf import Dynaconf
 __all__ = ['settings']
 
 settings = Dynaconf(
-    setttings_files=[
+    settings_files=[
         'config.toml',
         os.path.expanduser('~/.config/sqrt-data/config.toml')
-    ]
+    ],
 )
 #+end_src
 
@@ -54,7 +54,7 @@ settings = Dynaconf(
 |------+--------------------------------------------|
 | TODO | Demarcate this block with links to modules |
 
-#+begin_src conf-toml config.toml
+#+begin_src conf-toml :tangle config.toml
 [database]
 user = 'postgres'
 password = 'localdbpass'
@@ -63,8 +63,9 @@ host = 'localhost'
 port = 5432
 
 [general]
-root = '~/logs-sync-debug'
+root = '@format {env[HOME]}/logs-sync-debug'
 hash_json = '@format {this.general.root}/hash.json'
+hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
 
 [archive]
@@ -194,98 +195,68 @@ def create_schema(schema, Base):
 :PROPERTIES:
 :header-args:python+: :tangle sqrt_data/api/hash.py
 :END:
-| Type | Note            |
-|------+-----------------|
-| TODO | Use SQLite here |
 
-Another common thing is that I want to track changes within files. The obvious way to do that is to compare hashes of files.
+Another common thing I need is to track changes within files. The obvious way to do that is to compare hashes of files.
 #+begin_src python
-import json
+from sqlitedict import SqliteDict
 import logging
 import os
 import subprocess
 from .config import settings
+
+__all__ = ['md5sum', 'HashDict']
 #+end_src
 
 So, first we need to calculate a hash.
 #+begin_src python
 def md5sum(filename):
-    res = subprocess.run(['md5sum', filename], capture_output=True,
-                         check=True).stdout
+    res = subprocess.run(
+        ['md5sum', filename],
+        capture_output=True,
+        check=True,
+        cwd=settings.general.root
+    ).stdout
     res = res.decode('utf-8')
     return res.split(' ')[0]
 #+end_src
 
-Second, how do we actually store the hashes? The reasonable way would be to use SQLite, which I have in TODO list. Meanwhile, a JSON file does the job. Given that I archive old files, number of files doesn't increase over time, so there is no scalability issues.
+Second, how do we actually store the hashes? I was using a huge JSON file for some time, but during the refactoring I've came to an idea that something like SQLite would make more sense. [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] seems to be a reasonable wrapper which does exactly what I want, so I'll use that. Just extending the class a bit to make it do what I want.
 
-So, check if a file was updated:
+However, for some reason the module crashes with message that =libgcc_s.so.1= cannot be found, which seems to be a problem with my Anaconda + Guix setup. [[https://stackoverflow.com/questions/64797838/libgcc-s-so-1-must-be-installed-for-pthread-cancel-to-work][This answer]] on StackOverflow has helped.
 #+begin_src python
-def is_updated(filename):
-    if not os.path.exists(settings.general.hash_json):
-        return True
-    with open(settings.general.hash_json, 'r') as f:
-        data = json.load(f)
-    if filename not in data:
-        return True
-    old_hash = data[filename]
-    new_hash = md5sum(filename)
-    return old_hash != new_hash
+import ctypes
+libgcc_s = ctypes.CDLL('libgcc_s.so.1')
 #+end_src
 
-Save a hash for a file:
+Now, the class:
 #+begin_src python
-def save_hash(filename):
-    new_hash = md5sum(filename)
-    data = {}
-    if os.path.exists(settings.general.hash_json):
-        with open(settings.general.hash_json, 'r') as f:
-            data = json.load(f)
-    data[filename] = new_hash
-    os.makedirs(os.path.dirname(settings.general.hash_json), exist_ok=True)
-    with open(settings.hash_json, 'w') as f:
-        json.dump(data, f)
-    logging.info('Saved hash for %s', filename)
-#+end_src
+class HashDict(SqliteDict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(settings.general.hash_db, *args, **kwargs)
 
-Toggle hash for a file:
-#+begin_src python
-def hash_set(filename):
-    if is_updated(filename):
-        save_hash(filename)
-    else:
-        with open(settings.general.hash_json, 'r') as f:
-            data = json.load(f)
-        data[filename] = '0'
-        with open(settings.general.hash_json, 'w') as f:
-            json.dump(data, f)
-#+end_src
+    def is_updated(self, filename):
+        saved = self.get(filename)
+        return saved is None or saved != md5sum(filename)
 
-Return the hashed files:
-#+begin_src python
-def get_filenames():
-    data = {}
-    if os.path.exists(settings.general.hash_json):
-        with open(settings.general.hash_json, 'r') as f:
-            data = json.load(f)
-    return list(data.keys())
-#+end_src
+    def save_hash(self, filename):
+        self[filename] = md5sum(filename)
 
-Finally, a small status report about the changed files:
-#+begin_src python
-def list_hashes():
-    data = {}
-    if os.path.exists(settings.general.hash_json):
-        with open(settings.general.hash_json, 'r') as f:
-            data = json.load(f)
-    for name, value in data.items():
-        if os.path.exists(name):
-            if is_updated(name):
-                print('[UPD]\t', end='')
-            else:
-                print('[   ]\t', end='')
+    def toggle_hash(self, filename):
+        if self.is_updated(filename):
+            self.save_hash(filename)
         else:
-            print('[DEL]\t', end='')
-        print(f"{value}\t${name}")
+            self[filename] = '0'
+
+    def report(self):
+        for name, value in self.items():
+            if os.path.exists(name):
+                if self.is_updated(name):
+                    print('[UPD]\t', end='')
+                else:
+                    print('[   ]\t', end='')
+            else:
+                print('[DEL]\t', end='')
+            print(f"{value}\t{name}")
 #+end_src
 ** CLI entrypoint
 :PROPERTIES:
@@ -298,9 +269,10 @@ Also, [[https://github.com/magmax/python-inquirer][python-inquirer]] is nice lib
 import logging
 
 import click
+import os
 import inquirer
 
-from sqrt_data.api import get_filenames, hash_set, list_hashes
+from sqrt_data.api import HashDict, settings
 # from sqrt_data.cli import android, aw, mpd, service, sleep, waka
 #+end_src
 
@@ -319,7 +291,7 @@ Initialize a click group.
 #+begin_src python
 @click.group()
 def cli():
-    pass
+    print(f'CWD: {os.getcwd()}')
 #+end_src
 
 Add all the components to the group.
@@ -336,18 +308,20 @@ Two simple commands to work with file hashes.
 #+begin_src python
 @cli.command()
 def hash_list():
-    list_hashes()
-
+    hashes = HashDict()
+    hashes.report()
 
 @cli.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
-    logging.info('Toggled hash for %s', name)
-    if name is None:
-        name = inquirer.prompt(
-            [inquirer.List('filename', 'Select filename', get_filenames())]
-        )['filename']  # type: ignore
-    hash_set(name)
+    with HashDict() as h:
+        if name is None:
+            name = inquirer.prompt(
+                [inquirer.List('filename', 'Select filename', h.keys())]
+            )['filename']  # type: ignore
+        h.toggle_hash(os.path.join(settings.general.root, name))
+        logging.info('Toggled hash for %s', name)
+        h.commit()
 #+end_src
 
 Finally, to make this work, we have to invoke =cli()= in case =manage.py= is the main module. That is, when invoked with =python -m sqrt_data.manage=.
@@ -357,7 +331,7 @@ if __name__ == '__main__':
 #+end_src
 
 To be able to invoke the app with =python -m sqrt_data=, the following =__main__.py= is necessary:
-#+begin_src python :tangle __main__.py
+#+begin_src python :tangle sqrt_data/__main__.py
 from .manage import cli
 
 if __name__ == '__main__':

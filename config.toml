@@ -1,0 +1,34 @@
+[database]
+user = 'postgres'
+password = 'localdbpass'
+database = 'data'
+host = 'localhost'
+port = 5432
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+hash_json = '@format {this.general.root}/hash.json'
+hash_db = '@format {this.general.root}/hash.db'
+temp_data_folder = '/tmp/sqrt-data'
+
+[archive]
+days = 31
+timeout = 5
+
+[mpd]
+mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+mpd_log_folder = '@format {this.general.root}/mpd/log'
+
+[waka]
+wakatime_api_key = 'dummy'
+
+[aw]
+aw_last_updated = '@format {this.general.root}/aw_last_updated.json'
+aw_logs_folder = '@format {this.general.root}/aw'
+aw_types = ['afkstatus', 'currentwindow']
+
+[google]
+android_file = '@format {this.general.root}/google/android-history.json'
+
+[sleep]
+sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'

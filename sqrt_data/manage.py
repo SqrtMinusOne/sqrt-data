@@ -2,9 +2,10 @@
 import logging
 
 import click
+import os
 import inquirer
 
-from sqrt_data.api import get_filenames, hash_set, list_hashes
+from sqrt_data.api import HashDict, settings
 # from sqrt_data.cli import android, aw, mpd, service, sleep, waka
 # CLI entrypoint:1 ends here
 
@@ -21,7 +22,7 @@ logging.basicConfig(
 # [[file:../README.org::*CLI entrypoint][CLI entrypoint:3]]
 @click.group()
 def cli():
-    pass
+    print(f'CWD: {os.getcwd()}')
 # CLI entrypoint:3 ends here
 
 # [[file:../README.org::*CLI entrypoint][CLI entrypoint:4]]
@@ -36,18 +37,20 @@ def cli():
 # [[file:../README.org::*CLI entrypoint][CLI entrypoint:5]]
 @cli.command()
 def hash_list():
-    list_hashes()
-
+    hashes = HashDict()
+    hashes.report()
 
 @cli.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
-    logging.info('Toggled hash for %s', name)
-    if name is None:
-        name = inquirer.prompt(
-            [inquirer.List('filename', 'Select filename', get_filenames())]
-        )['filename']  # type: ignore
-    hash_set(name)
+    with HashDict() as h:
+        if name is None:
+            name = inquirer.prompt(
+                [inquirer.List('filename', 'Select filename', h.keys())]
+            )['filename']  # type: ignore
+        h.toggle_hash(os.path.join(settings.general.root, name))
+        logging.info('Toggled hash for %s', name)
+        h.commit()
 # CLI entrypoint:5 ends here
 
 # [[file:../README.org::*CLI entrypoint][CLI entrypoint:6]]
