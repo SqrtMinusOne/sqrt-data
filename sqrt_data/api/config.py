@@ -1,73 +1,14 @@
-import json
-import logging
+# [[file:../../README.org::*Configuration][Configuration:1]]
 import os
 
-__all__ = ['Config']
+from dynaconf import Dynaconf
 
+__all__ = ['settings']
 
-class Config:
-    USER = 'postgres'
-    PASSWORD = 'localdbpass'
-    DATABASE = 'data'
-    HOST = 'localhost'
-    PORT = 5432
-
-    ROOT = '~/logs-sync-debug'
-
-    MPD_CSV = ''
-    MPD_LOG_FOLDER = ''
-    TEMP_DATA_FOLDER = '/tmp/sqrt-data'
-    HASH_JSON = ''
-
-    WAKATIME_API_KEY = b'dummy'
-
-    AW_LAST_UPDATED = ''
-    AW_LOGS_FOLDER = ''
-    AW_TYPES = ['afkstatus', 'currentwindow']
-
-    ANDROID_FILE = ''
-
-    SLEEP_FILE = ''
-    SLEEP_GEOS = {}
-
-    ARCHIVE_DAYS = 31
-    ARCHIVE_TIMEOUT = 5
-
-    @classmethod
-    def _update_paths(cls):
-        cls.ROOT = os.path.expanduser(cls.ROOT)
-        cls.TEMP_DATA_FOLDER = os.path.expanduser(cls.TEMP_DATA_FOLDER)
-
-        cls.HASH_JSON = cls.HASH_JSON or cls.ROOT + '/hash.json'
-        cls.MPD_CSV = cls.MPD_CSV or cls.ROOT + '/mpd/mpd_library.csv'
-        cls.MPD_LOG_FOLDER = cls.MPD_LOG_FOLDER or cls.ROOT + '/mpd/logs'
-        cls.AW_LAST_UPDATED = cls.AW_LAST_UPDATED or cls.ROOT + '/aw_last_updated.json'
-        cls.AW_LOGS_FOLDER = cls.AW_LOGS_FOLDER or cls.ROOT + '/aw'
-        cls.ANDROID_FILE = cls.ANDROID_FILE or cls.ROOT + '/google/android-history.json'
-        cls.SLEEP_FILE = cls.SLEEP_FILE or cls.ROOT + '/google/android-history.json'
-
-    @classmethod
-    def load_config(cls, path=None):
-        if path == 'no':
-            return
-        if path is None:
-            config_root = os.environ.get(
-                'XDG_CONFIG_HOME', os.path.expanduser('~/.config')
-            )
-            path = os.path.join(config_root, 'sqrt-data', 'config.json')
-            if not os.path.exists(path):
-                logging.warn('Config not found at %s', path)
-                return
-        with open(path, 'r') as f:
-            config = json.load(f)
-            for key, value in config.items():
-                if not hasattr(cls, key):
-                    logging.warn('Wrong attribute %s', key)
-                setattr(cls, key, value)
-
-        cls._update_paths()
-
-        cls.WAKATIME_API_KEY = bytes(cls.WAKATIME_API_KEY, 'utf8') # type: ignore
-
-        if not os.path.exists(cls.TEMP_DATA_FOLDER):
-            os.makedirs(cls.TEMP_DATA_FOLDER)
+settings = Dynaconf(
+    setttings_files=[
+        'config.toml',
+        os.path.expanduser('~/.config/sqrt-data/config.toml')
+    ]
+)
+# Configuration:1 ends here

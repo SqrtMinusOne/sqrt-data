@@ -1,11 +1,14 @@
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:1]]
 import logging
 
 import click
 import inquirer
 
-from sqrt_data.api import Config, get_filenames, hash_set, list_hashes
-from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+from sqrt_data.api import get_filenames, hash_set, list_hashes
+# from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+# CLI entrypoint:1 ends here
 
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:2]]
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(message)s',
@@ -13,27 +16,24 @@ logging.basicConfig(
     handlers=[logging.FileHandler('./cli.log'),
               logging.StreamHandler()]
 )
+# CLI entrypoint:2 ends here
 
-
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:3]]
 @click.group()
-@click.option(
-    '-c',
-    '--config-path',
-    required=False,
-    help='path to JSON config or "no" to ignore'
-)
-def cli(config_path):
-    Config.load_config(config_path)
+def cli():
+    pass
+# CLI entrypoint:3 ends here
 
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:4]]
+# cli.add_command(mpd)
+# cli.add_command(waka)
+# cli.add_command(aw)
+# cli.add_command(android)
+# cli.add_command(sleep)
+# cli.add_command(service)
+# CLI entrypoint:4 ends here
 
-cli.add_command(mpd)
-cli.add_command(waka)
-cli.add_command(aw)
-cli.add_command(android)
-cli.add_command(sleep)
-cli.add_command(service)
-
-
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:5]]
 @cli.command()
 def hash_list():
     list_hashes()
@@ -48,7 +48,9 @@ def hash_toggle(name):
             [inquirer.List('filename', 'Select filename', get_filenames())]
         )['filename']  # type: ignore
     hash_set(name)
+# CLI entrypoint:5 ends here
 
-
+# [[file:../README.org::*CLI entrypoint][CLI entrypoint:6]]
 if __name__ == '__main__':
     cli()
+# CLI entrypoint:6 ends here

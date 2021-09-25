@@ -36,11 +36,13 @@ Let's start with configuration.
 My configuration library of choice for Python is [[https://github.com/rochacbruno/dynaconf][dynaconf]]. I like it because it allows for some simple logic in the config files, like dynamic variables.
 
 #+begin_src python :tangle sqrt_data/api/config.py
+import os
+
 from dynaconf import Dynaconf
 
 __all__ = ['settings']
 
-config = Dynaconf(
+settings = Dynaconf(
     setttings_files=[
         'config.toml',
         os.path.expanduser('~/.config/sqrt-data/config.toml')
@@ -88,7 +90,7 @@ android_file = '@format {this.general.root}/google/android-history.json'
 sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
 #+end_src
 *** Database
-My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project way before anyone has thought about the 2.0 migration, so some of the usage may reflect the old patterns.
+My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project before the 2.0 version was announced, so some of the usage may reflect the old patterns.
 
 I am using some actual ORM models here, but wherever I can I trust pandas to manage tables for me.
 
@@ -97,7 +99,7 @@ I have a bunch of options of writing such files:
 - if I write one huge block, I can't interweave the code with comments
 - if I write small blocks, blocks with class methods would have to be indented and I can't use =C-c '=
 
-So I opt for noweb. Fortunately, this seems to be the only class in the entire project, because I adopted it from another project which was designed with Object-Oriented Paradigm.
+So I opt for noweb. Fortunately, this seems to be the only class in the entire project, because I adopted it from another project which was designed with Object-Oriented Paradigm in mind.
 
 This class stores the state in the class variables and all of its methods are static, so really it's nothing more than an aggregation of global variables. Now I'd make it singleton if I were to design this from scratch, but hey, it works.
 
@@ -106,7 +108,7 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from .config import Config
+from .config import settings
 
 __all__ = ['DBConn']
 
@@ -170,8 +172,9 @@ A method to get a fresh database engine. This object can be passed to pandas.
 @staticmethod
 def get_engine(user=None, password=None, **kwargs):
     url = "postgresql://{0}:{1}@{2}:{3}/{4}".format(
-        user or Config.USER, password or Config.PASSWORD, Config.HOST,
-        Config.PORT, Config.DATABASE
+        user or settings.database.user, password or settings.database.password,
+        settings.database.host, settings.database.port,
+        settings.database.database
     )
     return create_engine(url, **kwargs)
 #+end_src
@@ -186,6 +189,179 @@ def create_schema(schema, Base):
         if table.schema == schema:
             tables.append(table)
     Base.metadata.create_all(DBConn.engine, tables)
+#+end_src
+*** Hashes
+:PROPERTIES:
+:header-args:python+: :tangle sqrt_data/api/hash.py
+:END:
+| Type | Note            |
+|------+-----------------|
+| TODO | Use SQLite here |
+
+Another common thing is that I want to track changes within files. The obvious way to do that is to compare hashes of files.
+#+begin_src python
+import json
+import logging
+import os
+import subprocess
+from .config import settings
+#+end_src
+
+So, first we need to calculate a hash.
+#+begin_src python
+def md5sum(filename):
+    res = subprocess.run(['md5sum', filename], capture_output=True,
+                         check=True).stdout
+    res = res.decode('utf-8')
+    return res.split(' ')[0]
+#+end_src
+
+Second, how do we actually store the hashes? The reasonable way would be to use SQLite, which I have in TODO list. Meanwhile, a JSON file does the job. Given that I archive old files, number of files doesn't increase over time, so there is no scalability issues.
+
+So, check if a file was updated:
+#+begin_src python
+def is_updated(filename):
+    if not os.path.exists(settings.general.hash_json):
+        return True
+    with open(settings.general.hash_json, 'r') as f:
+        data = json.load(f)
+    if filename not in data:
+        return True
+    old_hash = data[filename]
+    new_hash = md5sum(filename)
+    return old_hash != new_hash
+#+end_src
+
+Save a hash for a file:
+#+begin_src python
+def save_hash(filename):
+    new_hash = md5sum(filename)
+    data = {}
+    if os.path.exists(settings.general.hash_json):
+        with open(settings.general.hash_json, 'r') as f:
+            data = json.load(f)
+    data[filename] = new_hash
+    os.makedirs(os.path.dirname(settings.general.hash_json), exist_ok=True)
+    with open(settings.hash_json, 'w') as f:
+        json.dump(data, f)
+    logging.info('Saved hash for %s', filename)
+#+end_src
+
+Toggle hash for a file:
+#+begin_src python
+def hash_set(filename):
+    if is_updated(filename):
+        save_hash(filename)
+    else:
+        with open(settings.general.hash_json, 'r') as f:
+            data = json.load(f)
+        data[filename] = '0'
+        with open(settings.general.hash_json, 'w') as f:
+            json.dump(data, f)
+#+end_src
+
+Return the hashed files:
+#+begin_src python
+def get_filenames():
+    data = {}
+    if os.path.exists(settings.general.hash_json):
+        with open(settings.general.hash_json, 'r') as f:
+            data = json.load(f)
+    return list(data.keys())
+#+end_src
+
+Finally, a small status report about the changed files:
+#+begin_src python
+def list_hashes():
+    data = {}
+    if os.path.exists(settings.general.hash_json):
+        with open(settings.general.hash_json, 'r') as f:
+            data = json.load(f)
+    for name, value in data.items():
+        if os.path.exists(name):
+            if is_updated(name):
+                print('[UPD]\t', end='')
+            else:
+                print('[   ]\t', end='')
+        else:
+            print('[DEL]\t', end='')
+        print(f"{value}\t${name}")
+#+end_src
+** CLI entrypoint
+:PROPERTIES:
+:header-args:python+: :tangle sqrt_data/manage.py
+:END:
+We need an entrypoint for the CLI. My CLI library of choice is [[https://click.palletsprojects.com/en/8.0.x/][click]].
+
+Also, [[https://github.com/magmax/python-inquirer][python-inquirer]] is nice library to query the user for something.
+#+begin_src python
+import logging
+
+import click
+import inquirer
+
+from sqrt_data.api import get_filenames, hash_set, list_hashes
+# from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+#+end_src
+
+A simple logging setup.
+#+begin_src python
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[logging.FileHandler('./cli.log'),
+              logging.StreamHandler()]
+)
+#+end_src
+
+Initialize a click group.
+#+begin_src python
+@click.group()
+def cli():
+    pass
+#+end_src
+
+Add all the components to the group.
+#+begin_src python
+# cli.add_command(mpd)
+# cli.add_command(waka)
+# cli.add_command(aw)
+# cli.add_command(android)
+# cli.add_command(sleep)
+# cli.add_command(service)
+#+end_src
+
+Two simple commands to work with file hashes.
+#+begin_src python
+@cli.command()
+def hash_list():
+    list_hashes()
+
+
+@cli.command()
+@click.option('-n', '--name', required=False, type=str)
+def hash_toggle(name):
+    logging.info('Toggled hash for %s', name)
+    if name is None:
+        name = inquirer.prompt(
+            [inquirer.List('filename', 'Select filename', get_filenames())]
+        )['filename']  # type: ignore
+    hash_set(name)
+#+end_src
+
+Finally, to make this work, we have to invoke =cli()= in case =manage.py= is the main module. That is, when invoked with =python -m sqrt_data.manage=.
+#+begin_src python
+if __name__ == '__main__':
+    cli()
+#+end_src
+
+To be able to invoke the app with =python -m sqrt_data=, the following =__main__.py= is necessary:
+#+begin_src python :tangle __main__.py
+from .manage import cli
+
+if __name__ == '__main__':
+    cli()
 #+end_src
 ** Misc
 *** setup.py and requirements
