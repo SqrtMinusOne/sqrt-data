@@ -1,4 +1,4 @@
-# [[file:../../README.org::*Configuration][Configuration:1]]
+# [[file:../../org/index.org::*Configuration][Configuration:1]]
 import os
 
 from dynaconf import Dynaconf

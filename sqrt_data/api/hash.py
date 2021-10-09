@@ -1,4 +1,4 @@
-# [[file:../../README.org::*Hashes][Hashes:1]]
+# [[file:../../org/index.org::*Hashes][Hashes:1]]
 from sqlitedict import SqliteDict
 import logging
 import os
@@ -8,7 +8,7 @@ from .config import settings
 __all__ = ['md5sum', 'HashDict']
 # Hashes:1 ends here
 
-# [[file:../../README.org::*Hashes][Hashes:2]]
+# [[file:../../org/index.org::*Hashes][Hashes:2]]
 def md5sum(filename):
     res = subprocess.run(
         ['md5sum', filename],
@@ -20,12 +20,12 @@ def md5sum(filename):
     return res.split(' ')[0]
 # Hashes:2 ends here
 
-# [[file:../../README.org::*Hashes][Hashes:3]]
+# [[file:../../org/index.org::*Hashes][Hashes:3]]
 import ctypes
 libgcc_s = ctypes.CDLL('libgcc_s.so.1')
 # Hashes:3 ends here
 
-# [[file:../../README.org::*Hashes][Hashes:4]]
+# [[file:../../org/index.org::*Hashes][Hashes:4]]
 class HashDict(SqliteDict):
     def __init__(self, *args, **kwargs):
         super().__init__(settings.general.hash_db, *args, **kwargs)

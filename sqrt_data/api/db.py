@@ -1,4 +1,4 @@
-# [[file:../../README.org::*Database][Database:1]]
+# [[file:../../org/index.org::*Database][Database:1]]
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
