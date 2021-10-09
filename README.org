@@ -1,1 +1,1 @@
-/home/pavel/Code/data/sqrt-data/org/index.org
+org/index.org
