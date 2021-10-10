@@ -39,5 +39,3 @@ networks:
 
 volumes:
     postgres_data:
-    pgadmin:
-    widestage-db-data:

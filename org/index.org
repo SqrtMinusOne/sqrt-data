@@ -34,7 +34,7 @@ from .hash import *
 *** Configuration
 Let's start with configuration.
 
-My configuration library of choice for Python is [[https://github.com/rochacbruno/dynaconf][dynaconf]]. I like it because it allows for some simple logic in the config files, like dynamic variables.
+My configuration library of choice for Python is [[https://github.com/rochacbruno/dynaconf][dynaconf]]. I like it because it allows for some simple logic in the config files, e.g. dynamic variables.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/api/config.py")
 import os
@@ -87,6 +87,7 @@ aw_types = ['afkstatus', 'currentwindow']
 
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
+android_schema = 'android'
 
 [sleep]
 sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
@@ -94,7 +95,7 @@ sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
 *** Database
 My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project before the 2.0 version was announced, so some of the usage may reflect the old patterns.
 
-I am using some actual ORM models here, but wherever I can I trust pandas to manage tables for me.
+Also, I am using some actual ORM models here, but wherever I can, I trust pandas to manage tables for me.
 
 I have a bunch of options of writing such files:
 - if I use noweb, I can't use =M-x org-babel-detangle=
@@ -106,6 +107,7 @@ So I opt for noweb. Fortunately, this seems to be the only class in the entire p
 This class stores the state in the class variables and all of its methods are static, so really it's nothing more than an aggregation of global variables. Now I'd make it singleton if I were to design this from scratch, but hey, it works.
 
 #+begin_src python :noweb yes :tangle (my/org-prj-dir "sqrt_data/api/db.py")
+import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -130,6 +132,7 @@ def __init__(self, **kwargs):
     DBConn.Session = sessionmaker()
     DBConn.Session.configure(bind=self.engine)
     DBConn.scoped_session = scoped_session(DBConn.Session)
+    logging.info('Initialized database connection')
 #+end_src
 
 A method to reset the class, just in case. The original project used this for unit tests, but I don't plan to implement unit tests here as of now.
@@ -184,13 +187,14 @@ def get_engine(user=None, password=None, **kwargs):
 Finally, a method to create tables in a schema.
 #+begin_src python :noweb-ref db-dbconn :tangle no
 @staticmethod
-def create_schema(schema, Base):
+def create_schema(schema, Base=None):
     DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
-    tables = []
-    for name, table in Base.metadata.tables.items():
-        if table.schema == schema:
-            tables.append(table)
-    Base.metadata.create_all(DBConn.engine, tables)
+    if Base is not None:
+        tables = []
+        for name, table in Base.metadata.tables.items():
+            if table.schema == schema:
+                tables.append(table)
+        Base.metadata.create_all(DBConn.engine, tables)
 #+end_src
 *** Hashes
 :PROPERTIES:
@@ -221,9 +225,9 @@ def md5sum(filename):
     return res.split(' ')[0]
 #+end_src
 
-Second, how do we actually store the hashes? I was using a huge JSON file for some time, but during the refactoring I've came to an idea that something like SQLite would make more sense. [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] seems to be a reasonable wrapper which does exactly what I want, so I'll use that. Just extending the class a bit to make it do what I want.
+Second, how do we actually store the hashes? I was using a huge JSON file for some time, but during the refactoring I've came to an idea that something like SQLite would make more sense. [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] seems to be a reasonable wrapper which does exactly what I want, so I'll use that as a base.
 
-However, for some reason the module crashes with message that =libgcc_s.so.1= cannot be found, which seems to be a problem with my Anaconda + Guix setup. [[https://stackoverflow.com/questions/64797838/libgcc-s-so-1-must-be-installed-for-pthread-cancel-to-work][This answer]] on StackOverflow has helped.
+One note here is that the module crashes with message that =libgcc_s.so.1= cannot be found, which seems to be a problem with my Anaconda + Guix setup. [[https://stackoverflow.com/questions/64797838/libgcc-s-so-1-must-be-installed-for-pthread-cancel-to-work][This answer]] on StackOverflow has helped.
 #+begin_src python
 import ctypes
 libgcc_s = ctypes.CDLL('libgcc_s.so.1')
@@ -274,7 +278,7 @@ import os
 import inquirer
 
 from sqrt_data.api import HashDict, settings
-# from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+from sqrt_data import cli as cli_modules
 #+end_src
 
 A simple logging setup.
@@ -300,9 +304,14 @@ Add all the components to the group.
 # cli.add_command(mpd)
 # cli.add_command(waka)
 # cli.add_command(aw)
-# cli.add_command(android)
+cli.add_command(cli_modules.android)
 # cli.add_command(sleep)
 # cli.add_command(service)
+#+end_src
+
+The corresponding =__init__.py= in the CLI module:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/__init__.py")
+from .android import *
 #+end_src
 
 Two simple commands to work with file hashes.

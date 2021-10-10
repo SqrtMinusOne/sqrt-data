@@ -29,6 +29,7 @@ aw_types = ['afkstatus', 'currentwindow']
 
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
+android_schema = 'android'
 
 [sleep]
 sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'

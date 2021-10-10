@@ -6,7 +6,7 @@ import os
 import inquirer
 
 from sqrt_data.api import HashDict, settings
-# from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+from sqrt_data import cli as cli_modules
 # CLI entrypoint:1 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:2]]
@@ -29,12 +29,12 @@ def cli():
 # cli.add_command(mpd)
 # cli.add_command(waka)
 # cli.add_command(aw)
-# cli.add_command(android)
+cli.add_command(cli_modules.android)
 # cli.add_command(sleep)
 # cli.add_command(service)
 # CLI entrypoint:4 ends here
 
-# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:5]]
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]
 @cli.command()
 def hash_list():
     hashes = HashDict()
@@ -51,9 +51,9 @@ def hash_toggle(name):
         h.toggle_hash(os.path.join(settings.general.root, name))
         logging.info('Toggled hash for %s', name)
         h.commit()
-# CLI entrypoint:5 ends here
+# CLI entrypoint:6 ends here
 
-# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:7]]
 if __name__ == '__main__':
     cli()
-# CLI entrypoint:6 ends here
+# CLI entrypoint:7 ends here

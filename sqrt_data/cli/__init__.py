@@ -1,6 +1,3 @@
-from .aw import *
-from .mpd import *
-from .waka import *
+# [[file:../../org/index.org::*CLI entrypoint][CLI entrypoint:5]]
 from .android import *
-from .sleep import *
-from .service import *
+# CLI entrypoint:5 ends here

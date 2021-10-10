@@ -1,4 +1,5 @@
 # [[file:../../org/index.org::*Database][Database:1]]
+import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -18,6 +19,7 @@ class DBConn:
         DBConn.Session = sessionmaker()
         DBConn.Session.configure(bind=self.engine)
         DBConn.scoped_session = scoped_session(DBConn.Session)
+        logging.info('Initialized database connection')
     @classmethod
     def reset(cls):
         cls.engine = cls.Session = None
@@ -45,11 +47,12 @@ class DBConn:
         )
         return create_engine(url, **kwargs)
     @staticmethod
-    def create_schema(schema, Base):
+    def create_schema(schema, Base=None):
         DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
-        tables = []
-        for name, table in Base.metadata.tables.items():
-            if table.schema == schema:
-                tables.append(table)
-        Base.metadata.create_all(DBConn.engine, tables)
+        if Base is not None:
+            tables = []
+            for name, table in Base.metadata.tables.items():
+                if table.schema == schema:
+                    tables.append(table)
+            Base.metadata.create_all(DBConn.engine, tables)
 # Database:1 ends here
