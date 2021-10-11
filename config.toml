@@ -20,7 +20,9 @@ mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
 mpd_log_folder = '@format {this.general.root}/mpd/log'
 
 [waka]
-wakatime_api_key = 'dummy'
+api_key = 'ee3aaaea-625d-477b-ad1c-fc855c1f2344'
+api_url = 'https://wakatime.com/api/v1'
+schema = 'wakatime'
 
 [aw]
 aw_last_updated = '@format {this.general.root}/aw_last_updated.json'

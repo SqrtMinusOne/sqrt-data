@@ -78,7 +78,9 @@ mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
 mpd_log_folder = '@format {this.general.root}/mpd/log'
 
 [waka]
-wakatime_api_key = 'dummy'
+api_key = 'dummy'
+api_url = 'https://wakatime.com/api/v1'
+schema = 'wakatime'
 
 [aw]
 aw_last_updated = '@format {this.general.root}/aw_last_updated.json'
@@ -302,7 +304,7 @@ def cli():
 Add all the components to the group.
 #+begin_src python
 # cli.add_command(mpd)
-# cli.add_command(waka)
+cli.add_command(cli_modules.waka)
 # cli.add_command(aw)
 cli.add_command(cli_modules.android)
 # cli.add_command(sleep)
@@ -312,6 +314,7 @@ cli.add_command(cli_modules.android)
 The corresponding =__init__.py= in the CLI module:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/__init__.py")
 from .android import *
+from .waka import *
 #+end_src
 
 Two simple commands to work with file hashes.

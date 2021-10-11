@@ -27,7 +27,7 @@ def cli():
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:4]]
 # cli.add_command(mpd)
-# cli.add_command(waka)
+cli.add_command(cli_modules.waka)
 # cli.add_command(aw)
 cli.add_command(cli_modules.android)
 # cli.add_command(sleep)

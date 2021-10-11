@@ -1,3 +1,4 @@
+# [[file:../../org/wakatime.org::*CLI][CLI:1]]
 import click
 from sqrt_data.parse import wakatime
 
@@ -15,3 +16,4 @@ def get_data():
 @waka.command(help='Load the dump to DB')
 def load():
     wakatime.load()
+# CLI:1 ends here
