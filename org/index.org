@@ -91,6 +91,10 @@ aw_types = ['afkstatus', 'currentwindow']
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'
 
+[vk]
+author = 'Pavel Korytov'
+schema = 'vk'
+
 [sleep]
 sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
 #+end_src
@@ -303,18 +307,16 @@ def cli():
 
 Add all the components to the group.
 #+begin_src python
-# cli.add_command(mpd)
 cli.add_command(cli_modules.waka)
-# cli.add_command(aw)
 cli.add_command(cli_modules.android)
-# cli.add_command(sleep)
-# cli.add_command(service)
+cli.add_command(cli_modules.vk)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/__init__.py")
 from .android import *
 from .waka import *
+from .vk import *
 #+end_src
 
 Two simple commands to work with file hashes.

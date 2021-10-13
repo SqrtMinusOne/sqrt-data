@@ -20,7 +20,7 @@ mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
 mpd_log_folder = '@format {this.general.root}/mpd/log'
 
 [waka]
-api_key = 'ee3aaaea-625d-477b-ad1c-fc855c1f2344'
+api_key = 'dummy'
 api_url = 'https://wakatime.com/api/v1'
 schema = 'wakatime'
 
@@ -32,6 +32,10 @@ aw_types = ['afkstatus', 'currentwindow']
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'
+
+[vk]
+author = 'Pavel Korytov'
+schema = 'vk'
 
 [sleep]
 sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'

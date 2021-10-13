@@ -19,8 +19,6 @@ def get_data():
         f'{settings["waka"]["api_url"]}/users/current/datadumps',
         headers=headers
     )
-    print(r.json())
-    print(headers)
     data = r.json()['data']
     if len(data) == 0:
         logging.info('No WakaTime dumps found')

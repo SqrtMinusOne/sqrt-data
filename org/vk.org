@@ -1,0 +1,196 @@
+#+TITLE: VK data
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+The [[https://vk.com][vk.com]] social network is rather totalitarian in terms of (not) giving a user a voice what to do with their data, but even they are forced by GDPR to [[https://vk.com/data_protection?lang=en&section=rules][provide a copy of what they have on you]], so I'll use that here.
+
+Also, I don't use the platform for anything but messaging, so I won't parse anything else.
+
+* Parsing
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/vk/parse.py") :comments link
+:END:
+The dump itself is a set of HTML files, which is a bit awkward to parse.
+
+So, we will need all kinds of packages to parse the HMTL, convert in DataFrames and put it to the database:
+
+#+begin_src python
+import pandas as pd
+import os
+import sys
+
+from sqrt_data.api import DBConn, settings
+
+from bs4 import BeautifulSoup
+from collections import deque
+from dateutil import parser
+from tqdm import tqdm
+#+end_src
+
+The only exported function is the one performing the loading.
+#+begin_src python
+__all__ = ['load']
+#+end_src
+
+And the corresponding =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/vk/__init__.py") :comments
+from .parse import *
+#+end_src
+
+The dump is provided in both English and Russian versions, and I can't say I understand the logic by which the version is chosen, but the last couple of dumps were English.
+
+At any rate, the only important difference between the versions is in the date format. So here is the English version:
+#+begin_src python
+def parse_date_english(date):
+    is_edited = False
+    if date.endswith(' (edited)'):
+        is_edited = True
+        date = date[:-9]
+    date = date[2:]
+    date = parser.parse(date)
+    return is_edited, date
+#+end_src
+
+And the Russian one:
+#+begin_src python
+MONTHS = [
+    'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя',
+    'дек'
+]
+
+
+def parse_date_russian(date):
+    is_edited = False
+    if date.endswith(' (ред.)'):
+        is_edited = True
+        date = date[:-7]
+    day, month, year, _, time = date.split()
+
+    month = MONTHS.index(month) + 1
+    date = parser.parse(time).replace(day=int(day), month=month, year=int(year))
+    return is_edited, date
+#+end_src
+
+The dump is structured as follows: the root folder has the "messages" folder. The latter has one directory per each target, and the invidual directory has a set of HTML files with messages.
+
+So, the following function parses one HTML file. More specifically, it returns a target name (be it a group chat or a single user) and a DataFrame with the following columns:
+- =name= - user/chat name
+- =sender=
+- =is_outgoing= - whether you are the sender
+- =date=
+- =message=
+- =is_edited=
+
+#+begin_src python
+def parse_file(path):
+    with open(path, 'r', encoding='windows-1251') as f:
+        soup = BeautifulSoup(f)
+
+    content = soup.html.body.div
+    name = content.find(class_='page_content page_block'
+                       ).h2.div.find(class_='_header_inner'
+                                    ).find('div', class_='ui_crumb').text
+    items = content.find(class_='page_content page_block'
+                        ).find(class_='wrap_page_content')
+
+    senders, dates, messages, edited = deque(), deque(), deque(), deque()
+
+    for item in items.find_all(class_='item'):
+        header = item.div.find(class_='message__header')
+        author, date = header.text.split(', ', 1)
+
+        is_edited, date = parse_date_english(date)
+        message_div = item.div.find('div', class_='')
+        message = ''
+        for content in message_div.contents:
+            if content.name is None:
+                if message:
+                    message += '\n' + content
+                else:
+                    message += content
+
+        if message:
+            senders.append(author)
+            dates.append(date)
+            messages.append(message)
+            edited.append(is_edited)
+
+    global_author = settings['vk']['author']
+
+    df = pd.DataFrame(
+        {
+            "target": name,
+            "sender": [s if s != 'You' else global_author for s in senders],
+            "is_outgoing": [s == 'You' for s in senders],
+            "message": messages,
+            "date": dates,
+            "is_edited": edited
+        }
+    )
+    return df
+#+end_src
+
+Next, parse a directory for a single target:
+#+begin_src python
+def parse_directory(path):
+    files = sorted([f for f in os.listdir(path) if f.endswith('html')])
+    df = pd.DataFrame(
+        columns=[
+            'target', 'sender', 'is_outgoing'
+            'message', 'date', 'is_edited'
+        ]
+    )
+    for file in tqdm(files, desc=path):
+        df_ = parse_file(os.path.join(path, file))
+        df = pd.concat([df, df_])
+    df = df.sort_values(by='date').reset_index(drop=True)
+    return df
+#+end_src
+
+And finally, parse the =messages= directory and put it to the database:
+#+begin_src python
+def load(directory):
+    DBConn()
+    DBConn.engine.execute(f'DROP SCHEMA IF EXISTS {settings["vk"]["schema"]}')
+    DBConn.create_schema(settings["vk"]["schema"])
+
+    for f in os.listdir(directory):
+        path = os.path.join(directory, f)
+        if not os.path.isdir(path) or path.endswith('.ipynb_checkpoints'):
+            continue
+
+        df = parse_directory(path)
+        df.to_sql(
+            'messages',
+            schema=settings["vk"]["schema"],
+            con=DBConn.engine,
+            if_exists='append'
+        )
+#+end_src
+
+* CLI
+And the CLI:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/vk.py")
+import click
+from sqrt_data.parse import vk as vk_
+
+__all__ = ['vk']
+
+
+@click.group(help='Parsing the VK dump')
+def vk():
+    pass
+
+
+@vk.command(help='Load the dump to DB')
+@click.option(
+    '--path',
+    '-p',
+    type=click.Path(exists=True),
+    help='Path to the "messages" directory from the dump',
+    required=True
+)
+def load(path):
+    vk_.load(path)
+#+end_src

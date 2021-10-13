@@ -26,12 +26,9 @@ def cli():
 # CLI entrypoint:3 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:4]]
-# cli.add_command(mpd)
 cli.add_command(cli_modules.waka)
-# cli.add_command(aw)
 cli.add_command(cli_modules.android)
-# cli.add_command(sleep)
-# cli.add_command(service)
+cli.add_command(cli_modules.vk)
 # CLI entrypoint:4 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]
