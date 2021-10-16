@@ -1,0 +1,300 @@
+#+TITLE: MPD data
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+Parsing the data from [[https://www.musicpd.org/][Music Player Daemon]].
+
+As it doesn't log too many data by default, I've mage a small Python app called [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]] to collect the required information. The app creates one log file in the csv format per day and hostname.
+
+* Models
+One case where I use the SQLAlchemy models for some reason.
+
+A model for a particular song:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/MpdSong.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['MpdSong']
+
+class MpdSong(Base):
+    __tablename__ = 'MpdSong'
+    __table_args__ = {'schema': 'mpd'}
+
+    id = sa.Column(
+        sa.BigInteger(),
+        primary_key=True,
+        nullable=False,
+        unique=True,
+        autoincrement=True,
+    )
+
+    file = sa.Column(
+        sa.Text(),
+        nullable=False,
+        unique=True
+    )
+
+    duration = sa.Column(sa.Integer(), nullable=False)
+    artist = sa.Column(sa.Text(), nullable=True)
+    album_artist = sa.Column(sa.Text(), nullable=False)
+    album = sa.Column(sa.Text(), nullable=False)
+    title = sa.Column(sa.Text(), nullable=False)
+    year = sa.Column(sa.Integer(), nullable=True)
+    musicbrainz_trackid = sa.Column(sa.String(256), nullable=True)
+#+end_src
+
+A model for a record that a particular song was listened at a particular time:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/SongListened.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['SongListened']
+
+class SongListened(Base):
+    __tablename__ = 'SongListened'
+    __table_args__ = {'schema': 'mpd'}
+
+    song_id = sa.Column(
+        sa.BigInteger(),
+        sa.ForeignKey('mpd.MpdSong.id'),
+        primary_key=True,
+        nullable=False
+    )
+
+    time = sa.Column(
+        sa.DateTime(),
+        nullable=False,
+        primary_key=True
+    )
+#+end_src
+
+And an =__init__.py= file for the mpd models package:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/__init__.py")
+from .MpdSong import *
+from .SongListened import *
+#+end_src
+
+* Parsing the data
+** Storing the library
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/save_library.py") :comments link
+:END:
+First, in accordance to the outlined way of exchanging the data between the machines and the server, we need to save the MPD library to the csv format.
+
+Imports are as follows:
+#+begin_src python
+import os
+import dateutil
+import pandas as pd
+
+from mpd import MPDClient
+from sqrt_data.api import settings
+#+end_src
+
+And the only exported function:
+#+begin_src python
+__all__ = ['save_library']
+#+end_src
+
+Extract year from the MPD entry:
+#+begin_src python
+def get_year(datum):
+    try:
+        if datum['originaldate']:
+            return dateutil.parser.parse(datum['originaldate']).year
+    except TypeError:
+        pass
+    if datum['date']:
+        return dateutil.parser.parse(datum['date']).year
+    return None
+#+end_src
+
+And save the library to the csv file:
+#+begin_src python
+def save_library():
+    mpd = MPDClient()
+    mpd.connect("localhost", 6600)
+
+    data = mpd.listallinfo()
+    data = [datum for datum in data if 'directory' not in datum]
+    df = pd.DataFrame(data)
+
+    df['year'] = df.apply(get_year, axis=1)
+    df.duration = df.time
+    df['album_artist'] = df.albumartist
+
+    csv_path = os.path.expanduser(settings['mpd']['library_csv'])
+
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    df.to_csv(csv_path, index=False)
+#+end_src
+** Loading the library
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/load_library.py") :comments link
+:END:
+Next, load the library to the database.
+
+The required imports:
+#+begin_src python
+import os
+import sys
+import logging
+
+import pandas as pd
+from tqdm import tqdm
+
+from sqrt_data.api import HashDict, DBConn, settings
+from sqrt_data.models import Base
+from sqrt_data.models.mpd import MpdSong
+#+end_src
+
+The only exported function:
+#+begin_src python
+__all__ = ['load_library']
+#+end_src
+
+And the function itself:
+#+begin_src python
+def load_library():
+    csv_path = os.path.expanduser(settings['mpd']['library_csv'])
+    with HashDict() as h:
+        if not h.is_updated(csv_path):
+            logging.info('MPD library already saved, skipping')
+            return
+
+        logging.info('Saving MPD Library')
+        df = pd.read_csv(csv_path)
+        DBConn()
+        DBConn.create_schema('mpd', Base)
+
+        with DBConn.get_session() as db:
+            tracks = list(df.itertuples(index=False))
+            for track in tqdm(tracks):
+                track = track._asdict()
+                song = MpdSong(**{k:v for k, v in track.items() if k in MpdSong.__table__.columns.keys()})
+
+                added = db.query(MpdSong).filter_by(file=track['file']).first()
+                if not added:
+                    db.merge(song)
+            db.commit()
+        h.save_hash(csv_path)
+        h.commit()
+#+end_src
+
+** Loading the logs
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/load_logs.py") :comments link
+:END:
+Finally, loading the data from the mpd-watcher.
+
+The required imports:
+#+begin_src python
+import pandas as pd
+import sys
+import os
+import glob
+from tqdm import tqdm
+import logging
+
+from sqrt_data.api import DBConn, HashDict, settings
+from sqrt_data.models import Base
+from sqrt_data.models.mpd import MpdSong, SongListened
+#+end_src
+
+The only exported function:
+#+begin_src python
+__all__ = ['load_logs']
+#+end_src
+
+Getting a list of logs to load:
+#+begin_src python
+def get_logs_to_put():
+    folder = os.path.expanduser(settings['mpd']['log_folder'])
+    logs = glob.glob(f"{folder}/*.csv")
+    with HashDict() as h:
+        return [log for log in logs if h.is_updated(log)]
+#+end_src
+
+A function to save one log file:
+#+begin_src python
+def put_log(filename):
+    logging.info('Reading %s', filename)
+    df = pd.read_csv(filename)
+    records = df.to_dict(orient='records')
+    all_found = True
+    with HashDict() as h:
+        with DBConn.get_session() as db:
+            for record in tqdm(records):
+                if record['type'] == 'skipped':
+                    continue
+                song = db.query(MpdSong).filter_by(file=record['file']).first()
+                if song:
+                    listened = SongListened(song_id=song.id, time=record['time'])
+                    db.merge(listened)
+                else:
+                    logging.error('Song %s not found', record['file'])
+                    all_found = False
+            db.commit()
+        if all_found:
+            h.save_hash(filename)
+            h.commit()
+#+end_src
+
+And a function to save all the logs:
+#+begin_src python
+def load_logs():
+    logs = get_logs_to_put()
+    if len(logs) == 0:
+        logging.info('All logs are saved')
+        sys.exit(0)
+    DBConn()
+    for log in logs:
+        put_log(log)
+#+end_src
+
+** =__init__.py=
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/mpd/__init__.py")
+from .save_library import *
+from .load_library import *
+from .load_logs import *
+#+end_src
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/mpd.py") :comments link
+:END:
+The CLI interface via click.
+
+#+begin_src python
+import click
+from sqrt_data.parse import mpd as mpd_
+#+end_src
+
+Export a click group named "mpd".
+#+begin_src python
+__all__ = ['mpd']
+
+@click.group(help='MPD stats')
+def mpd():
+    pass
+#+end_src
+
+Save the MPD library:
+#+begin_src python
+@mpd.command(help='Save the MPD library to the CSV format')
+def save_library():
+    mpd_.save_library()
+#+end_src
+
+Load the MPD library:
+#+begin_src python
+@mpd.command(help='Load the MPD library')
+def load_library():
+    mpd_.load_library()
+#+end_src
+
+Load the MPD logs:
+#+begin_src python
+@mpd.command(help='Load MPD logs')
+def load_logs():
+    mpd_.load_logs()
+#+end_src

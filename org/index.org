@@ -74,8 +74,8 @@ days = 31
 timeout = 5
 
 [mpd]
-mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
-mpd_log_folder = '@format {this.general.root}/mpd/log'
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'
 
 [waka]
 api_key = 'dummy'
@@ -315,6 +315,7 @@ cli.add_command(cli_modules.waka)
 cli.add_command(cli_modules.android)
 cli.add_command(cli_modules.vk)
 cli.add_command(cli_modules.sleep)
+cli.add_command(cli_modules.mpd)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
@@ -323,6 +324,7 @@ from .android import *
 from .waka import *
 from .vk import *
 from .sleep import *
+from .mpd import *
 #+end_src
 
 Two simple commands to work with file hashes.

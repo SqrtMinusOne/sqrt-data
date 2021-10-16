@@ -30,6 +30,7 @@ cli.add_command(cli_modules.waka)
 cli.add_command(cli_modules.android)
 cli.add_command(cli_modules.vk)
 cli.add_command(cli_modules.sleep)
+cli.add_command(cli_modules.mpd)
 # CLI entrypoint:4 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]

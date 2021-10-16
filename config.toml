@@ -16,8 +16,8 @@ days = 31
 timeout = 5
 
 [mpd]
-mpd_csv = '@format {this.general.root}/mpd/mpd_library.csv'
-mpd_log_folder = '@format {this.general.root}/mpd/log'
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'
 
 [waka]
 api_key = 'dummy'
