@@ -38,4 +38,8 @@ author = 'Pavel Korytov'
 schema = 'vk'
 
 [sleep]
-sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
+file = '@format {this.general.root}/sleep/sleep-export.csv'
+schema = 'sleep'
+
+[sleep.geos]
+e3336012 = 'test'

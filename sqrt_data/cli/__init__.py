@@ -2,4 +2,5 @@
 from .android import *
 from .waka import *
 from .vk import *
+from .sleep import *
 # CLI entrypoint:5 ends here

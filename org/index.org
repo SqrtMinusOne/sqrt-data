@@ -96,7 +96,11 @@ author = 'Pavel Korytov'
 schema = 'vk'
 
 [sleep]
-sleep_file = '@format {this.general.root}/sleep/sleep-export.csv'
+file = '@format {this.general.root}/sleep/sleep-export.csv'
+schema = 'sleep'
+
+[sleep.geos]
+e3336012 = 'test'
 #+end_src
 *** Database
 My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project before the 2.0 version was announced, so some of the usage may reflect the old patterns.
@@ -310,6 +314,7 @@ Add all the components to the group.
 cli.add_command(cli_modules.waka)
 cli.add_command(cli_modules.android)
 cli.add_command(cli_modules.vk)
+cli.add_command(cli_modules.sleep)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
@@ -317,6 +322,7 @@ The corresponding =__init__.py= in the CLI module:
 from .android import *
 from .waka import *
 from .vk import *
+from .sleep import *
 #+end_src
 
 Two simple commands to work with file hashes.
