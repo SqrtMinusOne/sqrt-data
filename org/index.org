@@ -29,6 +29,7 @@ That way I can import things like this: =from sqrt_data.api import settings=.
 from .config import *
 from .db import *
 from .hash import *
+from .hostname import *
 #+end_src
 
 *** Configuration
@@ -83,9 +84,11 @@ api_url = 'https://wakatime.com/api/v1'
 schema = 'wakatime'
 
 [aw]
-aw_last_updated = '@format {this.general.root}/aw_last_updated.json'
-aw_logs_folder = '@format {this.general.root}/aw'
-aw_types = ['afkstatus', 'currentwindow']
+last_updated = '@format {this.general.root}/aw_last_updated.json'
+logs_folder = '@format {this.general.root}/aw'
+types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
+api = 'http://localhost:5600/api'
+schema = 'aw'
 
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
@@ -273,6 +276,19 @@ class HashDict(SqliteDict):
                 print('[DEL]\t', end='')
             print(f"{value}\t{name}")
 #+end_src
+*** Hostname
+We need a way to distinguish between machines on which the app is running. The easiest way to do that is via a hostname, but this doesn't work as expected on Android via termux, so there I have an environment variable set up.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/api/hostname.py")
+import os
+import socket
+
+__all__ = ['get_hostname']
+
+
+def get_hostname():
+    return os.environ.get('ANDROID_PHONE', socket.gethostname())
+#+end_src
 ** CLI entrypoint
 :PROPERTIES:
 :header-args:python+: :tangle (my/org-prj-dir "sqrt_data/manage.py")
@@ -287,7 +303,7 @@ import click
 import os
 import inquirer
 
-from sqrt_data.api import HashDict, settings
+from sqrt_data.api import HashDict, settings, get_hostname
 from sqrt_data import cli as cli_modules
 #+end_src
 
@@ -307,6 +323,7 @@ Initialize a click group.
 @click.group()
 def cli():
     print(f'CWD: {os.getcwd()}')
+    print(f'hostname: {get_hostname()}')
 #+end_src
 
 Add all the components to the group.
@@ -316,6 +333,7 @@ cli.add_command(cli_modules.android)
 cli.add_command(cli_modules.vk)
 cli.add_command(cli_modules.sleep)
 cli.add_command(cli_modules.mpd)
+cli.add_command(cli_modules.aw)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
@@ -325,6 +343,7 @@ from .waka import *
 from .vk import *
 from .sleep import *
 from .mpd import *
+from .aw import *
 #+end_src
 
 Two simple commands to work with file hashes.

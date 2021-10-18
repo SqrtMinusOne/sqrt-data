@@ -5,7 +5,7 @@ import click
 import os
 import inquirer
 
-from sqrt_data.api import HashDict, settings
+from sqrt_data.api import HashDict, settings, get_hostname
 from sqrt_data import cli as cli_modules
 # CLI entrypoint:1 ends here
 
@@ -23,6 +23,7 @@ logging.basicConfig(
 @click.group()
 def cli():
     print(f'CWD: {os.getcwd()}')
+    print(f'hostname: {get_hostname()}')
 # CLI entrypoint:3 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:4]]
@@ -31,6 +32,7 @@ cli.add_command(cli_modules.android)
 cli.add_command(cli_modules.vk)
 cli.add_command(cli_modules.sleep)
 cli.add_command(cli_modules.mpd)
+cli.add_command(cli_modules.aw)
 # CLI entrypoint:4 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]
