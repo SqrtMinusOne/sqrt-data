@@ -28,3 +28,9 @@ def load_library():
 def load_logs():
     mpd_.load_logs()
 # CLI:5 ends here
+
+# [[file:../../org/mpd.org::*CLI][CLI:6]]
+@mpd.command(help='Create views for Metabase')
+def create_views():
+    mpd_.create_views()
+# CLI:6 ends here

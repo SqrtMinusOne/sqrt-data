@@ -1,3 +1,9 @@
+# [[file:../../../org/mpd.org::*Postprocessing][Postprocessing:2]]
+from sqrt_data.api import DBConn
+
+__all__ = ['create_views']
+
+MPD_VIEW = """
 drop view if exists mpd."MpdSongListened";
 create view mpd."MpdSongListened" as
 select
@@ -10,18 +16,9 @@ select
 from mpd."SongListened" L
 left join mpd."MpdSong" S ON L.song_id = S.id
 order by time asc;
+"""
 
-drop function if exists fixSongTitle;
-
-create function fixSongTitle(title text)
-    returns text language PLPGSQL as $$
-begin
-    title = regexp_replace(title, ':.*$', '');
-    return title;
-end; $$;
-
-start transaction;
-update mpd."MpdSong"
-    set title = fixSongTitle(title);
-
-commit;
+def create_views():
+    DBConn()
+    DBConn.engine.execute(MPD_VIEW)
+# Postprocessing:2 ends here

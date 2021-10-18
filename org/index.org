@@ -353,13 +353,18 @@ def hash_list():
     hashes = HashDict()
     hashes.report()
 
+
 @cli.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
     with HashDict() as h:
         if name is None:
             name = inquirer.prompt(
-                [inquirer.List('filename', 'Select filename', h.keys())]
+                [
+                    inquirer.List(
+                        'filename', 'Select filename', choices=list(h.keys())
+                    )
+                ]
             )['filename']  # type: ignore
         h.toggle_hash(os.path.join(settings.general.root, name))
         logging.info('Toggled hash for %s', name)
