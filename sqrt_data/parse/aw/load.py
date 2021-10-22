@@ -55,6 +55,7 @@ def get_records(type_, df):
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'web_tab_current':
         df = df.rename({ 'tabCount': 'tab_count' }, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda t: t.replace(tzinfo=None))
     return df.to_dict(orient='records')
 # Loading:5 ends here
 

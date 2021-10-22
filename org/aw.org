@@ -135,6 +135,7 @@ The corresponding =__init__.py=:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/aw/__init__.py") :comments link
 from .save import *
 from .load import *
+from .postprocess import *
 #+end_src
 ** Saving
 :PROPERTIES:
@@ -319,6 +320,7 @@ def get_records(type_, df):
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'web_tab_current':
         df = df.rename({ 'tabCount': 'tab_count' }, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda t: t.replace(tzinfo=None))
     return df.to_dict(orient='records')
 #+end_src
 
@@ -337,6 +339,169 @@ def load():
                     db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
             db.commit()
         h.commit()
+#+end_src
+** Postprocessing
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/postprocess.py") :comments link
+:header-args:sql: :noweb-ref postprocess-sql
+:END:
+Because the data from ActivityWatch is somewhat scattered, the following postprocessing is necessary:
+1. filter active windows by not-afk status
+2. filter active browser tabs by not-afk status & active browser window
+
+And because there is a lot of data, some pre-aggregation is necessary to avoid loading the database in the live mode. I've considered implementing this part in Python but decided that PL/pgSQL would be eaiser.
+
+So first, initialize the tables for the first level of post-processed data:
+#+begin_src sql
+drop procedure if exists aw.init_postprocessing();
+create procedure aw.init_postprocessing()
+    language plpgsql as
+$$
+begin
+    drop table if exists aw.notafkwindow;
+    drop table if exists aw.notafktab;
+    drop table if exists aw._notafkwindow_meta cascade;
+    create table aw.notafkwindow (like aw.currentwindow including all);
+    create table aw.notafktab (like aw.webtab including all);
+    create table aw._notafkwindow_meta (
+        date date primary key,
+        count int8
+    );
+
+    CREATE OR REPLACE VIEW aw._notafkwindow_meta_diff AS
+    WITH current_meta AS (
+        select date(timestamp) date, count(*) count
+        FROM aw.currentwindow
+        GROUP BY date(timestamp)
+        ORDER BY date ASC
+    )
+    SELECT CM.date
+    FROM current_meta CM
+             LEFT JOIN aw._notafkwindow_meta OM ON CM.date = OM.date
+    WHERE CM.count != OM.count OR OM.count IS NULL;
+end;
+$$;
+#+end_src
+
+Next, filtering the list of active windows. If:
+- an interval of using a program overlaps with an interval of being non-afk
+- an interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with an interval of being afk less than =aw.skip_afk_interval=
+add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
+
+I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance, because otherwise doing such a join on a tables with around a million records is quite expesive.
+#+begin_src sql
+drop function if exists aw.get_notafkwindow;
+create function aw.get_notafkwindow(start_date timestamp, end_date timestamp)
+    returns table
+            (
+                like aw.currentwindow
+            )
+    language plpgsql
+AS
+$$
+begin
+    RETURN QUERY
+        WITH A AS (SELECT * FROM aw.afkstatus WHERE timestamp BETWEEN start_date AND end_date),
+             C AS (SELECT * FROM aw.currentwindow WHERE timestamp BETWEEN start_date AND end_date)
+        SELECT concat('afkw-', substring(C.id from '[0-9]+$'), '-', substring(A.id from '[0-9]+$'))::varchar(256) id,
+               C.bucket_id,
+               C.hostname,
+               case
+                   when A.timestamp > C.timestamp then A.timestamp
+                   else C.timestamp end AS                                                                        timestamp,
+               extract(epoch from
+                       least(C.timestamp + C.duration * interval '1 second',
+                             A.timestamp + A.duration * interval '1 second') -
+                       greatest(A.timestamp, C.timestamp))                                                        duration,
+               C.app,
+               C.title
+        FROM A
+                 INNER JOIN C ON
+                ((A.timestamp, A.timestamp + A.duration * interval '1 second')
+                    overlaps
+                 (C.timestamp, C.timestamp + C.duration * interval '1 second')) AND A.hostname = C.hostname
+        WHERE A.status = true
+           OR (A.status = false AND A.duration < current_setting('aw.skip_afk_interval')::int AND
+               (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')))
+        ORDER BY timestamp DESC;
+end;
+$$;
+#+end_src
+
+Finally, we have to put all of that into the table. Previously, I had a materialized view which was refreshed every 24 hours, but it took 15-30 minutes to do the refresh precisely because the join is expensive.
+
+With that in mind, I've made a scheme where the data is preprocessed day by day only for unprocessed days. The day is considered unprocessed if the number of records in a day is changed.
+
+This turned out to be much faster, and even the full processing with that approach started to take just 20-30 seconds, so persisting whether the day was processed is not quite necessary. But I'll let it be like this as long it as works.
+
+The view to get the list of unprocessed days resides in =init_postprocessing=. The procedure to perform the processing:
+#+begin_src sql
+drop procedure if exists aw.postprocess_notafkwindow;
+create procedure aw.postprocess_notafkwindow()
+    language plpgsql AS
+$$
+DECLARE
+    date date;
+begin
+    FOR date IN SELECT * FROM aw._notafkwindow_meta_diff
+        LOOP
+            DELETE FROM aw.notafkwindow WHERE date(timestamp) = date;
+            INSERT INTO aw.notafkwindow
+            SELECT *
+            FROM aw.get_notafkwindow(date, date + interval '1 day');
+        end loop;
+    DELETE FROM aw._notafkwindow_meta;
+    INSERT INTO aw._notafkwindow_meta
+    select date(timestamp) date, count(*) count
+    FROM aw.currentwindow
+    GROUP BY date(timestamp)
+    ORDER BY date;
+end;
+$$;
+#+end_src
+
+The Python part sets the database settings from the configuration file and executes the stuff above. I wanted to make a separate .sql file for that, but that would make packaging more complicated, so here goes noweb.
+#+begin_src python :noweb yes
+from sqrt_data.api import settings, DBConn
+
+__all__ = [
+    'postprocessing_set_sql', 'postprocessing_init', 'postprocessing_dispatch'
+]
+
+SQL = """
+<<postprocess-sql>>
+"""
+
+
+def update_settings(db):
+    db.execute(
+        f"""
+    SELECT set_config('aw.skip_afk_interval', '{settings['aw']['skip_afk_interval']}', false);
+    SELECT set_config('aw.skip_afk_apps', '{settings['aw']['skip_afk_apps']}', false);
+    SELECT set_config('aw.skip_afk_titles', '{settings['aw']['skip_afk_titles']}', false);
+    """
+    )
+
+
+def postprocessing_set_sql():
+    DBConn()
+    with DBConn.get_session() as db:
+        update_settings(db)
+        db.execute(SQL)
+        db.commit()
+
+def postprocessing_init():
+    DBConn()
+    with DBConn.get_session() as db:
+        db.execute("CALL aw.init_postprocessing();")
+        db.commit()
+
+def postprocessing_dispatch():
+    DBConn()
+    with DBConn.get_session() as db:
+        update_settings(db)
+        db.execute("CALL aw.postprocess_notafkwindow();")
+        db.commit()
 #+end_src
 * CLI
 :PROPERTIES:
@@ -358,7 +523,7 @@ def aw():
     pass
 #+end_src
 
-Save the buckets:
+Save and load the buckets:
 #+begin_src python
 @aw.command(help='Save ActivityWatch buckets')
 @click.option('--force', '-f', is_flag=True)
@@ -368,4 +533,19 @@ def save_buckets(force):
 @aw.command(help='Load ActivityWatch buckets')
 def load():
     aw_.load()
+#+end_src
+
+Posprocessing commands:
+#+begin_src python
+@aw.command(help='Set or update SQL definitions for postprocessing')
+def postprocessing_set_sql():
+    aw_.postprocessing_set_sql()
+
+@aw.command(help='Initialize postprocessing')
+def postprocessing_init():
+    aw_.postprocessing_init()
+
+@aw.command(help='Perform postprocessing')
+def postprocessing_dispatch():
+    aw_.postprocessing_dispatch()
 #+end_src

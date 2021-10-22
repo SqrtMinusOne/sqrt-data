@@ -21,3 +21,17 @@ def save_buckets(force):
 def load():
     aw_.load()
 # CLI:3 ends here
+
+# [[file:../../org/aw.org::*CLI][CLI:4]]
+@aw.command(help='Set or update SQL definitions for postprocessing')
+def postprocessing_set_sql():
+    aw_.postprocessing_set_sql()
+
+@aw.command(help='Initialize postprocessing')
+def postprocessing_init():
+    aw_.postprocessing_init()
+
+@aw.command(help='Perform postprocessing')
+def postprocessing_dispatch():
+    aw_.postprocessing_dispatch()
+# CLI:4 ends here
