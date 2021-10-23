@@ -11,6 +11,7 @@ from tqdm import tqdm
 from sqrt_data.api import settings, DBConn, HashDict
 from sqrt_data.models import Base
 from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
+from sqrt_data.parse.locations import LocationMatcher
 # Loading:1 ends here
 
 # [[file:../../../org/aw.org::*Loading][Loading:2]]
@@ -51,11 +52,18 @@ MODELS = {
 
 # [[file:../../../org/aw.org::*Loading][Loading:5]]
 def get_records(type_, df):
+    loc = LocationMatcher()
     if type_ == 'afkstatus':
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'web_tab_current':
-        df = df.rename({ 'tabCount': 'tab_count' }, axis=1)
-    df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda t: t.replace(tzinfo=None))
+        df = df.rename({'tabCount': 'tab_count'}, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    locations = df.apply(
+        lambda row: loc.get_location(row.timestamp, row.hostname),
+        axis=1
+    )
+    df['location'] = [l[0] for l in locations]
+    df['timestamp'] = [l[1] for l in locations]
     return df.to_dict(orient='records')
 # Loading:5 ends here
 

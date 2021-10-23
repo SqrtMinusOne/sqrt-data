@@ -1,4 +1,4 @@
-# [[file:../../../org/aw.org::*Postprocessing][Postprocessing:4]]
+# [[file:../../../org/aw.org::*Postprocessing][Postprocessing:5]]
 from sqrt_data.api import settings, DBConn
 
 __all__ = [
@@ -34,6 +34,16 @@ begin
     WHERE CM.count != OM.count OR OM.count IS NULL;
 end;
 $$;
+drop function if exists aw.is_afk;
+create function aw.is_afk(status bool, duration float, app text, title text) returns bool
+    language plpgsql as
+$$
+begin
+    return status = true
+        OR (status = false AND duration < current_setting('aw.skip_afk_interval')::int AND
+            (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')));
+end;
+$$;
 drop function if exists aw.get_notafkwindow;
 create function aw.get_notafkwindow(start_date timestamp, end_date timestamp)
     returns table
@@ -50,6 +60,7 @@ begin
         SELECT concat('afkw-', substring(C.id from '[0-9]+$'), '-', substring(A.id from '[0-9]+$'))::varchar(256) id,
                C.bucket_id,
                C.hostname,
+               C.location,
                case
                    when A.timestamp > C.timestamp then A.timestamp
                    else C.timestamp end AS                                                                        timestamp,
@@ -57,16 +68,17 @@ begin
                        least(C.timestamp + C.duration * interval '1 second',
                              A.timestamp + A.duration * interval '1 second') -
                        greatest(A.timestamp, C.timestamp))                                                        duration,
-               C.app,
-               C.title
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.app
+                   else 'AFK' end       as                                                                        app,
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.title
+                   else 'AFK' end       as                                                                        title
         FROM A
                  INNER JOIN C ON
                 ((A.timestamp, A.timestamp + A.duration * interval '1 second')
                     overlaps
                  (C.timestamp, C.timestamp + C.duration * interval '1 second')) AND A.hostname = C.hostname
-        WHERE A.status = true
-           OR (A.status = false AND A.duration < current_setting('aw.skip_afk_interval')::int AND
-               (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')))
         ORDER BY timestamp DESC;
 end;
 $$;
@@ -124,4 +136,4 @@ def postprocessing_dispatch():
         update_settings(db)
         db.execute("CALL aw.postprocess_notafkwindow();")
         db.commit()
-# Postprocessing:4 ends here
+# Postprocessing:5 ends here

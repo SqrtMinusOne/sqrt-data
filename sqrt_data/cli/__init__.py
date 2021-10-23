@@ -5,4 +5,5 @@ from .vk import *
 from .sleep import *
 from .mpd import *
 from .aw import *
+from .locations import *
 # CLI entrypoint:5 ends here

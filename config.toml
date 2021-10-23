@@ -48,3 +48,8 @@ schema = 'sleep'
 
 [sleep.geos]
 e3336012 = 'test'
+
+[location]
+list_csv = '@format {this.general.root}/csv/locations.csv'
+tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
+hostnames_csv = '@format {this.general.root}/csv/loc_hostnames.csv'

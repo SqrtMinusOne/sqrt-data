@@ -37,6 +37,8 @@ As of now, there are 4 default event types with the following structure of the =
   - =incognito=
   - =tabCount=
 
+I also add a =location= field.
+
 ** Source models
 So, I want to save this structure to my PostgreSQL database. I decided to break 3NF and use one table for each bucket type. So, here is a common model:
 
@@ -57,6 +59,7 @@ class Bucket(Base):
     )
     bucket_id = sa.Column(sa.String(256), nullable=False)
     hostname = sa.Column(sa.String(256), nullable=False)
+    location = sa.Column(sa.String(256), nullable=False)
     timestamp = sa.Column(sa.DateTime(), nullable=False)
     duration = sa.Column(sa.Float(), nullable=False)
 #+end_src
@@ -273,6 +276,7 @@ from tqdm import tqdm
 from sqrt_data.api import settings, DBConn, HashDict
 from sqrt_data.models import Base
 from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
+from sqrt_data.parse.locations import LocationMatcher
 #+end_src
 
 The only exported function is the one that performs the loading:
@@ -314,13 +318,22 @@ MODELS = {
 }
 #+end_src
 
+Pre-processing the records. ActivityWatch saves all the timestamps with 0 UTC offset, so I here set the timestamps back to their original timezone.
+
 #+begin_src python
 def get_records(type_, df):
+    loc = LocationMatcher()
     if type_ == 'afkstatus':
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'web_tab_current':
-        df = df.rename({ 'tabCount': 'tab_count' }, axis=1)
-    df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda t: t.replace(tzinfo=None))
+        df = df.rename({'tabCount': 'tab_count'}, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    locations = df.apply(
+        lambda row: loc.get_location(row.timestamp, row.hostname),
+        axis=1
+    )
+    df['location'] = [l[0] for l in locations]
+    df['timestamp'] = [l[1] for l in locations]
     return df.to_dict(orient='records')
 #+end_src
 
@@ -388,6 +401,20 @@ Next, filtering the list of active windows. If:
 - an interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with an interval of being afk less than =aw.skip_afk_interval=
 add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
 
+After some time, I decided to add the invervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, an auxililary function to check the AFK status:
+#+begin_src sql
+drop function if exists aw.is_afk;
+create function aw.is_afk(status bool, duration float, app text, title text) returns bool
+    language plpgsql as
+$$
+begin
+    return status = true
+        OR (status = false AND duration < current_setting('aw.skip_afk_interval')::int AND
+            (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')));
+end;
+$$;
+#+end_src
+
 I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance, because otherwise doing such a join on a tables with around a million records is quite expesive.
 #+begin_src sql
 drop function if exists aw.get_notafkwindow;
@@ -406,6 +433,7 @@ begin
         SELECT concat('afkw-', substring(C.id from '[0-9]+$'), '-', substring(A.id from '[0-9]+$'))::varchar(256) id,
                C.bucket_id,
                C.hostname,
+               C.location,
                case
                    when A.timestamp > C.timestamp then A.timestamp
                    else C.timestamp end AS                                                                        timestamp,
@@ -413,16 +441,17 @@ begin
                        least(C.timestamp + C.duration * interval '1 second',
                              A.timestamp + A.duration * interval '1 second') -
                        greatest(A.timestamp, C.timestamp))                                                        duration,
-               C.app,
-               C.title
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.app
+                   else 'AFK' end       as                                                                        app,
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.title
+                   else 'AFK' end       as                                                                        title
         FROM A
                  INNER JOIN C ON
                 ((A.timestamp, A.timestamp + A.duration * interval '1 second')
                     overlaps
                  (C.timestamp, C.timestamp + C.duration * interval '1 second')) AND A.hostname = C.hostname
-        WHERE A.status = true
-           OR (A.status = false AND A.duration < current_setting('aw.skip_afk_interval')::int AND
-               (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')))
         ORDER BY timestamp DESC;
 end;
 $$;

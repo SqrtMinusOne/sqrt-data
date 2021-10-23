@@ -1,0 +1,108 @@
+#+TITLE: Locations
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+TODO org config link
+
+Working with my location history. I don't change the location too much, but it's still interesting add that datapoint. Also, ActivityWatch and some other apps cast all timestamps to UTC, so it is necessary to restore the original timezone.
+
+There is actually little reason to store this in database, as it's just a handful of csv files which manage with Org mode. So it's just a class which provides functionality for matching timestamps and hostnames with location.
+
+* Matching locations
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/locations/match.py") :comments link
+:END:
+
+The csv files have a schema like this:
+- =tz_csv=
+  - =location= - location string
+  - =timezone= - timezone like "+3"
+- =list_csv=
+  - =start_time=
+  - =location= - location from =tz_csv=
+- =loc_hostnames=
+  - =hostname=
+  - =location= - location from =tz_csv=
+
+The class is meant to throw errors in case there is a mismatch somewhere.
+
+#+begin_src python
+import pandas as pd
+
+from datetime import timedelta
+from sqrt_data.api import settings
+
+__all__ = ['LocationMatcher']
+
+
+class LocationMatcher:
+    def __init__(self):
+        self._df_tz = pd.read_csv(settings['location']['tz_csv'])
+        self._df_list = pd.read_csv(settings['location']['list_csv'])
+        self._df_hostnames = pd.read_csv(settings['location']['hostnames_csv'])
+
+        self._df_list['start_time'] = pd.to_datetime(
+            self._df_list['start_time']
+        )
+        self._df_list = self._df_list.sort_values(
+            by='start_time', ascending=False
+        )
+
+        self._init_timezones()
+
+    def _init_timezones(self):
+        self._timezones = {
+            d.location: int(d.timezone)
+            for d in self._df_tz.itertuples(index=False)
+        }
+        self._df_list['timezone'] = [
+            self._timezones[l] for l in self._df_list['location']
+        ]
+        self._df_hostnames['timezone'] = [
+            self._timezones[l] for l in self._df_hostnames['location']
+        ]
+
+    def get_location(self, time, hostname=None):
+        if hostname is not None:
+            matches = self._df_hostnames[self._df_hostnames.hostname == hostname
+                                        ]
+            if len(matches) > 0:
+                match = matches.iloc[0]
+                time += timedelta(seconds=60 * 60 * int(match.timezone))
+                return (match.location, time)
+        row = self._df_list[self._df_list.start_time < time.to_datetime64()
+                           ].iloc[0]
+        time += timedelta(seconds=60 * 60 * int(row.timezone))
+        return (row.location, time)
+#+end_src
+
+The corresponding =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/locations/__init__.py")
+from .match import *
+#+end_src
+
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/locations.py") :comments link
+:END:
+A simple CLI to check if everything is fine, and the =LocationMatcher= class can be constructed.
+
+#+begin_src python
+import click
+
+from sqrt_data.parse.locations import LocationMatcher
+
+__all__ = ['locations']
+
+@click.group(help='Locations')
+def locations():
+    pass
+#+end_src
+
+Try to construct the class:
+#+begin_src python
+@locations.command(help='Check if the location data is consistent')
+def check():
+    LocationMatcher()
+    print('Everything is OK')
+#+end_src
