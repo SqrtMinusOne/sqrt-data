@@ -1,4 +1,4 @@
-# [[file:../../../org/aw.org::*Postprocessing][Postprocessing:5]]
+# [[file:../../../org/aw.org::*Postprocessing][Postprocessing:7]]
 from sqrt_data.api import settings, DBConn
 
 __all__ = [
@@ -11,8 +11,8 @@ create procedure aw.init_postprocessing()
     language plpgsql as
 $$
 begin
-    drop table if exists aw.notafkwindow;
-    drop table if exists aw.notafktab;
+    drop table if exists aw.notafkwindow cascade;
+    drop table if exists aw.notafktab cascade;
     drop table if exists aw._notafkwindow_meta cascade;
     create table aw.notafkwindow (like aw.currentwindow including all);
     create table aw.notafktab (like aw.webtab including all);
@@ -104,6 +104,47 @@ begin
     ORDER BY date;
 end;
 $$;
+drop procedure if exists aw.create_afkwindow_views();
+create procedure aw.create_afkwindow_views()
+    language plpgsql as
+$$
+begin
+    CREATE MATERIALIZED VIEW aw.notafkwindow_group AS
+    SELECT hostname, location, date(timestamp) date, sum(duration) / 60 total_hours, app, title
+    FROM aw.notafkwindow
+    GROUP BY hostname, location, date(timestamp), app, title;
+end;
+$$;
+drop procedure if exists aw.create_browser_views();
+create procedure aw.create_browser_views()
+    language plpgsql as
+$$
+begin
+    CREATE MATERIALIZED VIEW aw.webtab_active AS
+    WITH W AS (SELECT distinct date_trunc('second', timestamp) AS timestamp
+               FROM aw.notafkwindow
+               WHERE title ~ current_setting('aw.webtab_apps')
+               ORDER BY timestamp),
+         T AS (SELECT * FROM aw.webtab WHERE url !~ current_setting('aw.skip_urls'))
+    SELECT T.bucket_id,
+           T.location,
+           greatest(W.timestamp, T.timestamp) AS       timestamp,
+           extract(epoch from
+                   least(T.timestamp + T.duration * interval '1 second',
+                         W.timestamp + interval '1 minute') -
+                   greatest(W.timestamp, T.timestamp)) duration,
+           T.url,
+           T.title,
+           T.audible,
+           T.tab_count
+    FROM T
+             INNER JOIN W ON
+        ((W.timestamp, W.timestamp + interval '1 minute')
+            overlaps
+         (T.timestamp, T.timestamp + T.duration * interval '1 second'))
+    ORDER BY timestamp;
+end
+$$;
 """
 
 
@@ -113,6 +154,8 @@ def update_settings(db):
     SELECT set_config('aw.skip_afk_interval', '{settings['aw']['skip_afk_interval']}', false);
     SELECT set_config('aw.skip_afk_apps', '{settings['aw']['skip_afk_apps']}', false);
     SELECT set_config('aw.skip_afk_titles', '{settings['aw']['skip_afk_titles']}', false);
+    SELECT set_config('aw.webtab_apps', '{settings['aw']['webtab_apps']}', false);
+    SELECT set_config('aw.skip_urls', '{settings['aw']['skip_urls']}', false);
     """
     )
 
@@ -127,7 +170,10 @@ def postprocessing_set_sql():
 def postprocessing_init():
     DBConn()
     with DBConn.get_session() as db:
+        update_settings(db)
         db.execute("CALL aw.init_postprocessing();")
+        db.execute("CALL aw.create_afkwindow_views();")
+        db.execute("CALL aw.create_browser_views();")
         db.commit()
 
 def postprocessing_dispatch():
@@ -135,5 +181,7 @@ def postprocessing_dispatch():
     with DBConn.get_session() as db:
         update_settings(db)
         db.execute("CALL aw.postprocess_notafkwindow();")
+        db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
         db.commit()
-# Postprocessing:5 ends here
+# Postprocessing:7 ends here

@@ -33,6 +33,8 @@ schema = 'aw'
 skip_afk_interval = '900'
 skip_afk_apps = '^(zoom|mpv)$'
 skip_afk_titles = '^(YouTube)$'
+webtab_apps = '^(Nightly)$'
+skip_urls = '^(moz-extension|about:blank)'
 
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
