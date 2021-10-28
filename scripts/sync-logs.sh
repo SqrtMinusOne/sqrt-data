@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# [[file:../org/index.org::*Sync script][Sync script:1]]
 PYTHON="/home/pavel/.conda/envs/data/bin/python"
 CLI="-m sqrt_data"
 DATA="$(hostname): $(date +"%Y-%m-%d")"
@@ -9,7 +10,8 @@ TODAY_SYNC=$(grep -F "$DATA" $LOG_FILE)
 if [ ! -z "$TODAY_SYNC" ] && [ "$1" != '-F' ]; then
     echo "Already synced today";
 else
-    $PYTHON $CLI aw to-csv
+    $PYTHON $CLI mpd save-library
+    $PYTHON $CLI aw save-buckets
     export RSYNC_EXCLUDE_PATTERN="sync.log"
     export CREATE_DIRS=yes
     export REMOTE_HOST_PING=false
@@ -18,3 +20,4 @@ else
     export DISPLAY=:0
     notify-send "Syncronization" "Logs submitted to the server"
 fi
+# Sync script:1 ends here

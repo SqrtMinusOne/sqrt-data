@@ -1,4 +1,18 @@
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:1]]
+#+TITLE: Sleep data
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+Parsing the data from the [[https://sleep.urbandroid.org/][SleepAsAndroid]] app.
+
+The data can be extracted from the app with the "Backup" option. The backup consists of three files, and the file with the actual data is called =sleep-export.csv=.
+
+* Parse the data
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/sleep/load.py") :comments link
+:END:
+
+Import the required modules:
+#+begin_src python
 import copy
 import logging
 import re
@@ -8,13 +22,45 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from sqrt_data.api import settings, DBConn, HashDict
-# Parse the data:1 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:2]]
+The only exported function is =load=:
+#+begin_src python
 __all__ = ['load']
-# Parse the data:2 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:3]]
+The structure the =sleep-export.csv= file is rather unusual. It is not a table, but an array of documents, stored in the following format:
+
+| key_1   | key_2   | ... | key_n   |
+| value_1 | value_2 | ... | value_n |
+
+Where keys are not necessarily unique.
+
+The first keys are common between all entires:
+- =Id=
+- =Tz= - timezone
+- =From= - start timestamp in the =DD. MM. YYYY HH:mm= in format
+- =To= - end timestamp in the same format
+- =Sched= - not sure, but looks like a timestamp of falling asleep
+- =Hours= - hours of sleep
+- =Rating= - rating =[0, 0.25, ..., 5]=
+- =Comment= - a string of the format =#tag1 #tag2 ... #tagN <text>=
+- =Framerate=
+- =Snore=
+- =Noise=
+- =Cycles= - number of sleep cycles
+- =DeepSleep= - deep sleep percentage
+- =LenAdjust= - ?
+- =Geo= - internal geolocation tag
+
+Then there are columns with key =HH:mm= and a float value, which looks like measured activity.
+
+And finally there are columns with key =Event= and a value of a format =<event_name>-<timestamp>[-<value>]=.
+
+Accordingly, I load the dump to three tables.
+
+First, the key column and the numeric columns:
+#+begin_src python
 KEY_SEQ = 'Id'
 NUM_COLS = set(
     [
@@ -22,13 +68,15 @@ NUM_COLS = set(
         'DeepSleep', 'LenAdjust'
     ]
 )
-# Parse the data:3 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:4]]
+The date format:
+#+begin_src python
 DATE = '%d. %m. %Y %H:%M'
-# Parse the data:4 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:5]]
+A function to extract tags and the actual comment from the =Comment= field:
+#+begin_src python
 def get_tags(comment):
     tags = re.findall('#\S+', comment)
     for i, tag in enumerate(tags):
@@ -36,9 +84,10 @@ def get_tags(comment):
         tags[i] = tag[1:]
     comment = comment.strip()
     return tags, comment
-# Parse the data:5 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:6]]
+A function to parse one event:
+#+begin_src python
 def parse_event(event):
     values = event.split('-')
     return {
@@ -47,9 +96,10 @@ def parse_event(event):
         'time': datetime.utcfromtimestamp(int(values[1]) / 1000),
         'data': values[2:]
     }
-# Parse the data:6 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:7]]
+And function to parse the entire structure:
+#+begin_src python
 def parse_csv_dict(lines):
     keys = None
     result = []
@@ -95,9 +145,10 @@ def parse_csv_dict(lines):
             result.append(row)
     result = sorted(result, key=lambda datum: datum['From'])
     return result
-# Parse the data:7 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:8]]
+I also want to merge entries the nearby entires:
+#+begin_src python
 def merge_data(data):
     data = copy.deepcopy(data)
     i, k = 0, 1
@@ -149,8 +200,8 @@ def merge_data(data):
                 'tags':
                     list(set([*a['tags'], *b['tags']])),
                 'times': {
-                    **a['times'],
-                    **b['times']
+                    ,**a['times'],
+                    ,**b['times']
                 }
             }
             k += 1
@@ -159,9 +210,10 @@ def merge_data(data):
             i += k
             k = 1
     return result
-# Parse the data:8 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:9]]
+And a function to convert the merged data to three DataFrames:
+#+begin_src python
 def get_dfs(data):
     data_main = deque()
     data_events = deque()
@@ -190,16 +242,24 @@ def get_dfs(data):
         lambda d: d if d > 0 else None
     )
     return df_main, df_events, df_times
-# Parse the data:9 ends here
+#+end_src
 
-# [[file:../../../org/sleep.org::*Parse the data][Parse the data:11]]
-CONSTRAINTS = """
+I want to put these DataFrames the database, but as there seems to be no way to create constraints with pandas, I do that manually:
+
+#+begin_src sql :noweb-ref sleep-constraints
 ALTER TABLE sleep.main DROP CONSTRAINT IF EXISTS main_pk;
 ALTER TABLE sleep.main ADD CONSTRAINT main_pk PRIMARY KEY (id);
 ALTER TABLE sleep.events DROP CONSTRAINT IF EXISTS events_sleep_fk;
 ALTER TABLE sleep.times DROP CONSTRAINT IF EXISTS events_times_fk;
 ALTER TABLE sleep.events ADD CONSTRAINT events_sleep_fk FOREIGN KEY (sleep_id) REFERENCES sleep.main(id);
 ALTER TABLE sleep.times ADD CONSTRAINT times_sleep_fk FOREIGN KEY (sleep_id) REFERENCES sleep.main(id);
+#+end_src
+
+And a final function to perform the required operations:
+
+#+begin_src python :noweb yes
+CONSTRAINTS = """
+<<sleep-constraints>>
 """
 
 def load():
@@ -236,4 +296,31 @@ def load():
         DBConn.engine.execute(CONSTRAINTS)
         h.save_hash(settings['sleep']['file'])
         h.commit()
-# Parse the data:11 ends here
+#+end_src
+
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/sleep.py") :comments link
+:END:
+The CLI interface via click.
+
+#+begin_src python
+import click
+from sqrt_data.parse import sleep as sleep_
+#+end_src
+
+Export a click group named "sleep".
+#+begin_src python
+__all__ = ['sleep']
+
+@click.group(help='Sleep stats')
+def sleep():
+    pass
+#+end_src
+
+The only command is to load the data to the database
+#+begin_src python
+@sleep.command(help='Load to DB')
+def load():
+    sleep_.load()
+#+end_src

@@ -1,3 +1,4 @@
+# [[file:org/index.org::*setup.py and requirements][setup.py and requirements:1]]
 from setuptools import find_packages, setup
 
 setup(
@@ -10,9 +11,11 @@ setup(
     packages=find_packages(),
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
-        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4'
+        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
+        'sqlitedict'
     ],
     entry_points='''
     [console_scripts]
     sqrt_data=sqrt_data.manage:cli
     ''')
+# setup.py and requirements:1 ends here

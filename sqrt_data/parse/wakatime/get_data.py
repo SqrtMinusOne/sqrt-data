@@ -1,22 +1,24 @@
+# [[file:../../../org/wakatime.org::*Get the data][Get the data:1]]
 import base64
 import logging
 import os
-
 import requests
 
-from sqrt_data.api import Config
+from sqrt_data.api import settings
+# Get the data:1 ends here
 
-API = 'https://wakatime.com/api/v1'
-
+# [[file:../../../org/wakatime.org::*Get the data][Get the data:2]]
 __all__ = ['get_data']
+# Get the data:2 ends here
 
-
+# [[file:../../../org/wakatime.org::*Get the data][Get the data:3]]
 def get_data():
-    headers = {
-        'Authorization':
-        f'Basic {base64.b64encode(Config.WAKATIME_API_KEY).decode("utf-8")}'
-    }
-    r = requests.get(f'{API}/users/current/datadumps', headers=headers)
+    key = base64.b64encode(str.encode(settings["waka"]["api_key"])).decode('utf-8')
+    headers = {'Authorization': f'Basic {key}'}
+    r = requests.get(
+        f'{settings["waka"]["api_url"]}/users/current/datadumps',
+        headers=headers
+    )
     data = r.json()['data']
     if len(data) == 0:
         logging.info('No WakaTime dumps found')
@@ -28,7 +30,9 @@ def get_data():
         return
 
     filename = f'wakatime-{dump_data["created_at"]}.json'
-    path = os.path.join(os.path.expanduser(Config.TEMP_DATA_FOLDER), filename)
+    path = os.path.join(
+        os.path.expanduser(settings['general']['temp_data_folder']), filename
+    )
     if os.path.exists(path):
         logging.info('File already downloaded')
         return
@@ -37,3 +41,4 @@ def get_data():
     with open(path, 'wb') as f:
         f.write(dump.content)
     logging.info('WakaTime dump downloaded to %s', filename)
+# Get the data:3 ends here

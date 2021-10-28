@@ -1,13 +1,17 @@
+# [[file:../../../org/mpd.org::*Storing the library][Storing the library:1]]
 import os
-
 import dateutil
 import pandas as pd
+
 from mpd import MPDClient
-from sqrt_data.api import Config
+from sqrt_data.api import settings
+# Storing the library:1 ends here
 
-__all__ = ['to_csv']
+# [[file:../../../org/mpd.org::*Storing the library][Storing the library:2]]
+__all__ = ['save_library']
+# Storing the library:2 ends here
 
-
+# [[file:../../../org/mpd.org::*Storing the library][Storing the library:3]]
 def get_year(datum):
     try:
         if datum['originaldate']:
@@ -17,9 +21,10 @@ def get_year(datum):
     if datum['date']:
         return dateutil.parser.parse(datum['date']).year
     return None
+# Storing the library:3 ends here
 
-
-def to_csv():
+# [[file:../../../org/mpd.org::*Storing the library][Storing the library:4]]
+def save_library():
     mpd = MPDClient()
     mpd.connect("localhost", 6600)
 
@@ -31,11 +36,8 @@ def to_csv():
     df.duration = df.time
     df['album_artist'] = df.albumartist
 
-    csv_path = os.path.expanduser(Config.MPD_CSV)
+    csv_path = os.path.expanduser(settings['mpd']['library_csv'])
 
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     df.to_csv(csv_path, index=False)
-
-
-if __name__ == "__main__":
-    to_csv()
+# Storing the library:4 ends here

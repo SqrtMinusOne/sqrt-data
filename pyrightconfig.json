@@ -1,5 +1,6 @@
 {
   "reportOptionalMemberAccess": false,
   "reportOptionalCall": false,
-  "reportOptionalSubscript": false
+  "reportOptionalSubscript": false,
+  "typeCheckingMode": "off"
 }
