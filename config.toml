@@ -2,7 +2,7 @@
 user = 'postgres'
 password = 'localdbpass'
 database = 'data'
-host = 'localhost'
+host = 'postgres'
 port = 5432
 
 [general]

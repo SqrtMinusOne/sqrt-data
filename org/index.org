@@ -1,4 +1,5 @@
 #+TITLE: sqrt-data
+#+PROPERTY: header-args:bash         :tangle-mode (identity #o755) :comments link :shebang "#!/usr/bin/env bash"
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 #+HUGO_ALIASES: /sqrt-data
@@ -61,7 +62,7 @@ settings = Dynaconf(
 user = 'postgres'
 password = 'localdbpass'
 database = 'data'
-host = 'localhost'
+host = 'postgres'
 port = 5432
 
 [general]
@@ -411,7 +412,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
-        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4'
+        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
+        'sqlitedict'
     ],
     entry_points='''
     [console_scripts]
@@ -421,10 +423,196 @@ setup(
 
 #+begin_src text :tangle (my/org-prj-dir "requirements.txt")
 pandas
+numpy
+click
+blessed==1.19.0
+inquirer
 python-mpd2
 sqlalchemy
-psycopg2
+psycopg2-binary
+requests
+tqdm
+beautifulsoup4
+dynaconf
+sqlitedict
 #+end_src
+* Machines
+Individual machines have to save the data to the logs folder and propagate new files to the server.
+
+** Sync script
+Here I use [[https://github.com/deajan/osync][osync]] to perform the syncronization. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+
+#+begin_src bash :tangle (my/org-prj-dir "scripts/sync-logs.sh")
+PYTHON="/home/pavel/.conda/envs/data/bin/python"
+CLI="-m sqrt_data"
+DATA="$(hostname): $(date +"%Y-%m-%d")"
+LOG_FILE="/home/pavel/logs-sync/sync.log"
+
+TODAY_SYNC=$(grep -F "$DATA" $LOG_FILE)
+
+if [ ! -z "$TODAY_SYNC" ] && [ "$1" != '-F' ]; then
+    echo "Already synced today";
+else
+    $PYTHON $CLI mpd save-library
+    $PYTHON $CLI aw save-buckets
+    export RSYNC_EXCLUDE_PATTERN="sync.log"
+    export CREATE_DIRS=yes
+    export REMOTE_HOST_PING=false
+    osync.sh --initiator=/home/pavel/logs-sync --target=ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync || exit 1
+    echo "$(hostname): $(date +"%Y-%m-%d %H:%m")" >> $LOG_FILE
+    export DISPLAY=:0
+    notify-send "Syncronization" "Logs submitted to the server"
+fi
+#+end_src
+
+The script is meant to be ran every hour.
+
+* Server side
+** Docker
+The server part uses Docker, because I'm in love with Docker.
+
+So, as I need the server to run commands on schedule, the easiest way to do this would be to use cron:
+#+begin_src scheme :tangle (my/org-prj-dir "deploy/sqrt-cron.guile")
+(job "0  2 * * *" "sqrt_data waka get_data && sqrt_data waka load")
+(job "15 2 * * *" "sqrt_data mpd load_library && sqrt_data mpd load_logs")
+(job "30 2 * * *" "sqrt_data sleep load")
+(job "45 2 * * *" "sqrt_data aw load && sqrt_data aw preprocessing_dispatch")
+#+end_src
+
+A Dockerfile for the program:
+#+begin_src dockerfile :tangle (my/org-prj-dir "Dockerfile")
+FROM python:3.10-buster
+# Install mcron
+RUN apt-get update && apt-get install -y mcron
+
+# Install sqrt-data
+WORKDIR "sqrt_data/"
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY sqrt_data/ setup.py ./
+RUN pip install .
+ENV PYTHONPATH="$PYTHONPATH:/sqrt_data"
+
+# Copy the configuration and apply the crontab
+WORKDIR "/"
+COPY deploy/sqrt-cron.guile ./
+
+# Run mcron
+CMD mcron sqrt-cron.guile
+#+end_src
+
+A docker-compose file. Consists of 4 services:
+- PostgresSQL database
+- Metabase
+- This application
+- A backup service
+#+begin_src yaml :tangle (my/org-prj-dir "docker-compose.yml")
+version: "3.5"
+
+services:
+    postgres:
+        restart: unless-stopped
+        image: postgres
+        container_name: "sqrt-data-postgres"
+        ports:
+            - 5432:5432
+        networks:
+            - postgres
+        environment:
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: localdbpass
+            POSTGRES_DB: data
+        volumes:
+            - postgres_data:/data/postgres
+    metabase:
+        container_name: "sqrt-data-metabase"
+        restart: unless-stopped
+        image: metabase/metabase
+        ports:
+            - 8083:3000
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            MB_DB_TYPE: postgres
+            MB_DB_DBNAME: metabase
+            MB_DB_PORT: 5432
+            MB_DB_USER: postgres
+            MB_DB_PASS: localdbpass
+            MB_DB_HOST: postgres
+    sqrt_data:
+        container_name: "sqrt-data"
+        build: .
+        restart: unless-stopped
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        volumes:
+            - type: bind
+              source: ./config.toml
+              target: /config.toml
+            - type: bind
+              source: ~/logs-sync-debug
+              target: /root/logs-sync-debug
+    backups:
+        image: prodrigestivill/postgres-backup-local
+        restart: always
+        volumes:
+            - ./backups:/backups
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            - POSTGRES_HOST=postgres
+            - POSTGRES_DB=data;metabase
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=localdbpass
+            - POSTGRES_EXTRA_OPTS=-Fc -Z9
+            - SCHEDULE=@daily
+            - BACKUP_KEEP_DAYS=7
+            - BACKUP_KEEP_WEEKS=4
+            - BACKUP_KEEP_MONTHS=2
+            - HEALTHCHECK_PORT=8080
+
+networks:
+    postgres:
+        driver: bridge
+
+volumes:
+    postgres_data:
+#+end_src
+** Instructions
+The server deployement is as follows.
+1. Clone the repository
+2. Change the settings in =config.toml= and =docker-compose.yml= according to the setup. What has to be changed:
+   - The folder with logs has to be mounted to the container. The mount path has to be setup in =config.toml= in =general.root=.
+   - =database.host= should be set to "postgres"
+   - It makes sense to change password in =database.password= and in the compose file.
+3. Create a database for metabase. To do that, run:
+   #+begin_src bash :eval no
+   docker-compose up postgres
+   #+end_src
+
+   Run psql in a separate shell:
+   #+begin_src bash :eval no
+   PGPASSWORD=localdbpass psql -h localhost -U postgres
+   #+end_src
+
+   And create a database:
+   #+begin_src sql
+   CREATE DATABASE metabase;
+   #+end_src
+
+   It may make sense to make a separate user for metabase here.
+4. Check if everything works correctly.
+   - Metabase instance should be available at http://localhost:8083/
+   - Run =docker exec -it sqrt-data /bin/bash=:
+     - Check if =config.toml= and the logs folder are mounted correctly
+     - =sqrt_data hash-list= has to work
+     - =sqrt_data mpd load-library= has to work
 * Notes
 ** Android setup
 Add to =.bashrc=:

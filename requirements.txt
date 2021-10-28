@@ -1,4 +1,13 @@
 pandas
+numpy
+click
+blessed==1.19.0
+inquirer
 python-mpd2
 sqlalchemy
-psycopg2
+psycopg2-binary
+requests
+tqdm
+beautifulsoup4
+dynaconf
+sqlitedict
