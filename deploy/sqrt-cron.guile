@@ -1,0 +1,4 @@
+(job "0  2 * * *" "sqrt_data waka get_data && sqrt_data waka load")
+(job "15 2 * * *" "sqrt_data mpd load_library && sqrt_data mpd load_logs")
+(job "30 2 * * *" "sqrt_data sleep load")
+(job "45 2 * * *" "sqrt_data aw load && sqrt_data aw preprocessing_dispatch")

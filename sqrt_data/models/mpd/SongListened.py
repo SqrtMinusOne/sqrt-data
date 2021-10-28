@@ -1,5 +1,6 @@
+# [[file:../../../org/mpd.org::*Models][Models:2]]
 import sqlalchemy as sa
-from .base import Base
+from sqrt_data.models import Base
 
 __all__ = ['SongListened']
 
@@ -13,9 +14,10 @@ class SongListened(Base):
         primary_key=True,
         nullable=False
     )
-    
+
     time = sa.Column(
         sa.DateTime(),
         nullable=False,
         primary_key=True
     )
+# Models:2 ends here

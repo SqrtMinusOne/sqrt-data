@@ -1,78 +1,56 @@
-import json
+# [[file:../../org/index.org::*Hashes][Hashes:1]]
+from sqlitedict import SqliteDict
 import logging
 import os
 import subprocess
+from .config import settings
 
-from .db import Config
+__all__ = ['md5sum', 'HashDict']
+# Hashes:1 ends here
 
-__all__ = [
-    'md5sum', 'is_updated', 'save_hash', 'list_hashes', 'hash_set',
-    'get_filenames'
-]
-
-
+# [[file:../../org/index.org::*Hashes][Hashes:2]]
 def md5sum(filename):
-    res = subprocess.run(['md5sum', filename], capture_output=True,
-                         check=True).stdout
+    res = subprocess.run(
+        ['md5sum', filename],
+        capture_output=True,
+        check=True,
+        cwd=settings.general.root
+    ).stdout
     res = res.decode('utf-8')
     return res.split(' ')[0]
+# Hashes:2 ends here
 
+# [[file:../../org/index.org::*Hashes][Hashes:3]]
+import ctypes
+libgcc_s = ctypes.CDLL('libgcc_s.so.1')
+# Hashes:3 ends here
 
-def is_updated(filename):
-    if not os.path.exists(Config.HASH_JSON):
-        return True
-    with open(Config.HASH_JSON, 'r') as f:
-        data = json.load(f)
-    if filename not in data:
-        return True
-    old_hash = data[filename]
-    new_hash = md5sum(filename)
-    return old_hash != new_hash
+# [[file:../../org/index.org::*Hashes][Hashes:4]]
+class HashDict(SqliteDict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(settings.general.hash_db, *args, **kwargs)
 
+    def is_updated(self, filename):
+        saved = self.get(filename)
+        return saved is None or saved != md5sum(filename)
 
-def save_hash(filename):
-    new_hash = md5sum(filename)
-    data = {}
-    if os.path.exists(Config.HASH_JSON):
-        with open(Config.HASH_JSON, 'r') as f:
-            data = json.load(f)
-    data[filename] = new_hash
-    os.makedirs(os.path.dirname(Config.HASH_JSON), exist_ok=True)
-    with open(Config.HASH_JSON, 'w') as f:
-        json.dump(data, f)
-    logging.info('Saved hash for %s', filename)
+    def save_hash(self, filename):
+        self[filename] = md5sum(filename)
 
-
-def hash_set(filename):
-    if is_updated(filename):
-        save_hash(filename)
-    else:
-        with open(Config.HASH_JSON, 'r') as f:
-            data = json.load(f)
-        data[filename] = '0'
-        with open(Config.HASH_JSON, 'w') as f:
-            json.dump(data, f)
-
-
-def get_filenames():
-    data = {}
-    if os.path.exists(Config.HASH_JSON):
-        with open(Config.HASH_JSON, 'r') as f:
-            data = json.load(f)
-    return list(data.keys())
-
-
-def list_hashes():
-    data = {}
-    if os.path.exists(Config.HASH_JSON):
-        with open(Config.HASH_JSON, 'r') as f:
-            data = json.load(f)
-    for name, value in data.items():
-        if os.path.exists(name):
-            if is_updated(name):
-                print('[UPD]\t', end='')
-            else:
-                print('[   ]\t', end='')
+    def toggle_hash(self, filename):
+        if self.is_updated(filename):
+            self.save_hash(filename)
         else:
-            print('[DEL]\t', end='')
-        print(f"{value}\t${name}")
+            self[filename] = '0'
+
+    def report(self):
+        for name, value in self.items():
+            if os.path.exists(name):
+                if self.is_updated(name):
+                    print('[UPD]\t', end='')
+                else:
+                    print('[   ]\t', end='')
+            else:
+                print('[DEL]\t', end='')
+            print(f"{value}\t{name}")
+# Hashes:4 ends here

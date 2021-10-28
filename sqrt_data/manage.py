@@ -1,11 +1,15 @@
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:1]]
 import logging
 
 import click
+import os
 import inquirer
 
-from sqrt_data.api import Config, get_filenames, hash_set, list_hashes
-from sqrt_data.cli import android, aw, mpd, service, sleep, waka
+from sqrt_data.api import HashDict, settings, get_hostname
+from sqrt_data import cli as cli_modules
+# CLI entrypoint:1 ends here
 
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:2]]
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(message)s',
@@ -13,42 +17,50 @@ logging.basicConfig(
     handlers=[logging.FileHandler('./cli.log'),
               logging.StreamHandler()]
 )
+# CLI entrypoint:2 ends here
 
-
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:3]]
 @click.group()
-@click.option(
-    '-c',
-    '--config-path',
-    required=False,
-    help='path to JSON config or "no" to ignore'
-)
-def cli(config_path):
-    Config.load_config(config_path)
+def cli():
+    print(f'CWD: {os.getcwd()}')
+    print(f'hostname: {get_hostname()}')
+# CLI entrypoint:3 ends here
 
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:4]]
+cli.add_command(cli_modules.waka)
+cli.add_command(cli_modules.android)
+cli.add_command(cli_modules.vk)
+cli.add_command(cli_modules.sleep)
+cli.add_command(cli_modules.mpd)
+cli.add_command(cli_modules.aw)
+cli.add_command(cli_modules.locations)
+# CLI entrypoint:4 ends here
 
-cli.add_command(mpd)
-cli.add_command(waka)
-cli.add_command(aw)
-cli.add_command(android)
-cli.add_command(sleep)
-cli.add_command(service)
-
-
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]
 @cli.command()
 def hash_list():
-    list_hashes()
+    hashes = HashDict()
+    hashes.report()
 
 
 @cli.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
-    logging.info('Toggled hash for %s', name)
-    if name is None:
-        name = inquirer.prompt(
-            [inquirer.List('filename', 'Select filename', get_filenames())]
-        )['filename']  # type: ignore
-    hash_set(name)
+    with HashDict() as h:
+        if name is None:
+            name = inquirer.prompt(
+                [
+                    inquirer.List(
+                        'filename', 'Select filename', choices=list(h.keys())
+                    )
+                ]
+            )['filename']  # type: ignore
+        h.toggle_hash(os.path.join(settings.general.root, name))
+        logging.info('Toggled hash for %s', name)
+        h.commit()
+# CLI entrypoint:6 ends here
 
-
+# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:7]]
 if __name__ == '__main__':
     cli()
+# CLI entrypoint:7 ends here

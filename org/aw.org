@@ -1,0 +1,638 @@
+#+TITLE: ActivityWatch stats
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+[[https://activitywatch.net/][ActivityWatch]] is FOSS time tracker software.
+
+
+* Models
+The [[https://docs.activitywatch.net/en/latest/buckets-and-events.html][data model]] in the program is pretty reasonable. The top-level entry is called "bucket", which has the following attributes:
+- =id=
+- =created= - creation date
+- =name=
+- =type= - type of events in bucket
+- =client= - ID of the client software
+- =hostname=
+and a list of events.
+
+One event has the following attributes:
+- =timestamp=
+- =duration= - duration in seconds
+- =data= - a dictionary with details about the event.
+
+As of now, there are 4 default event types with the following structure of the =data= fields, which are quite self-descriptive:
+- =afkstatus=
+  - =status= - "afk" or "not-afk"
+- =currentwindow=
+  - =app=
+  - =title=
+- =app.editor.activity=
+  - =file=
+  - =project=
+  - =language=
+- =web.tab.current=
+  - =url=
+  - =title=
+  - =audible=
+  - =incognito=
+  - =tabCount=
+
+I also add a =location= field.
+
+** Source models
+So, I want to save this structure to my PostgreSQL database. I decided to break 3NF and use one table for each bucket type. So, here is a common model:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/bucket.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['Bucket']
+
+
+class Bucket(Base):
+    __table_args__ = {'schema': 'aw'}
+    __abstract__ = True
+
+    id = sa.Column(
+        sa.String(256),
+        primary_key=True,
+    )
+    bucket_id = sa.Column(sa.String(256), nullable=False)
+    hostname = sa.Column(sa.String(256), nullable=False)
+    location = sa.Column(sa.String(256), nullable=False)
+    timestamp = sa.Column(sa.DateTime(), nullable=False)
+    duration = sa.Column(sa.Float(), nullable=False)
+#+end_src
+
+And here are the models for particular bucket types:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/afkstatus.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['AfkStatus']
+
+class AfkStatus(Bucket):
+    __tablename__ = 'afkstatus'
+    __table_args__ = {'schema': 'aw'}
+
+    status = sa.Column(sa.Boolean(), nullable=False)
+#+end_src
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/currentwindow.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['CurrentWindow']
+
+class CurrentWindow(Bucket):
+    __tablename__ = 'currentwindow'
+    __table_args__ = {'schema': 'aw'}
+
+    app = sa.Column(sa.Text(), nullable=False)
+    title = sa.Column(sa.Text(), nullable=False)
+#+end_src
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/appeditor.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['AppEditor']
+
+class AppEditor(Bucket):
+    __tablename__ = 'appeditor'
+    __table_args__ = {'schema': 'aw'}
+
+    file = sa.Column(sa.Text(), nullable=False)
+    project = sa.Column(sa.Text(), nullable=False)
+    language = sa.Column(sa.Text(), nullable=False)
+#+end_src
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/webtab.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['WebTab']
+
+class WebTab(Bucket):
+    __tablename__ = 'webtab'
+    __table_args__ = {'schema': 'aw'}
+
+    url = sa.Column(sa.Text(), nullable=False)
+    title = sa.Column(sa.Text(), nullable=False)
+    audible = sa.Column(sa.Boolean(), nullable=False)
+    incognito = sa.Column(sa.Boolean(), nullable=False)
+    tab_count = sa.Column(sa.Integer(), nullable=True)
+#+end_src
+
+The corresponding =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/__init__.py")
+from .bucket import *
+from .afkstatus import *
+from .currentwindow import *
+from .appeditor import *
+from .webtab import *
+#+end_src
+* Data
+The corresponding =__init__.py=:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/aw/__init__.py") :comments link
+from .save import *
+from .load import *
+from .postprocess import *
+#+end_src
+** Saving
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/save.py") :comments link
+:END:
+As usual, first we need to export the data from ActivityWatch to csv format.
+
+The required imports:
+#+begin_src python
+import socket
+import json
+import logging
+import os
+from collections import deque
+from datetime import datetime
+
+import pandas as pd
+import requests
+
+from sqrt_data.api import settings, get_hostname
+#+end_src
+
+The only exported function is =save_buckets=:
+#+begin_src python
+__all__ = ['save_buckets']
+#+end_src
+
+Buckets have a lot of data, so we need to somehow save the point of last download. That seems to be fine to persist in a JSON file.
+#+begin_src python
+def get_last_updated():
+    data = {}
+    if os.path.exists(os.path.expanduser(settings['aw']['last_updated'])):
+        with open(os.path.expanduser(settings['aw']['last_updated']), 'r') as f:
+            data = json.load(f)
+    # return data.get(f'last_updated-{get_hostname()}', None)
+    return data
+
+
+def save_last_updated(data):
+    os.makedirs(
+        os.path.dirname(os.path.expanduser(settings['aw']['last_updated'])),
+        exist_ok=True
+    )
+    data[f'last_updated-{get_hostname()}'] = datetime.now().isoformat()
+    with open(os.path.expanduser(settings['aw']['last_updated']), 'w') as f:
+        json.dump(data, f)
+#+end_src
+
+Next, get the data from the bucket and put it to a DataFrame:
+#+begin_src python
+def get_data(bucket_id, last_updated=None):
+    params = {}
+    api = settings['aw']['api']
+    if last_updated:
+        params['start'] = last_updated
+    r = requests.get(f'{api}/0/buckets/{bucket_id}')
+    bucket = r.json()
+    r = requests.get(f'{api}/0/buckets/{bucket_id}/events', params=params)
+    data = deque()
+    for event in r.json():
+        hostname = bucket['hostname']
+        if hostname == 'unknown':
+            hostname = get_hostname()
+        data.append(
+            {
+                'id': f"{bucket_id}-{event['id']}",
+                'bucket_id': bucket['id'],
+                'hostname': bucket['hostname'],
+                'duration': event['duration'],
+                'timestamp': pd.Timestamp(event['timestamp']),
+                **event['data']
+            }
+        )
+    if len(data) > 0:
+        df = pd.DataFrame(data)
+        df = df.set_index('id')
+        return df
+    return None
+#+end_src
+
+Finally, a function to perform this operation on all the available buckets. I also want to function to run once per day to avoid creating too many files, so there is a simple limiter.
+#+begin_src python
+def save_buckets(force=False):
+    last_updated = get_last_updated()
+    last_updated_time = last_updated.get(f'last_updated-{get_hostname()}', None)
+    if last_updated_time is not None:
+        last_updated_date = datetime.fromisoformat(last_updated_time).date()
+        if (datetime.now().date() == last_updated_date and not force):
+            logging.info('Already loaded AW today')
+            return
+    r = requests.get(f'{settings["aw"]["api"]}/0/buckets')
+    buckets = r.json()
+
+    os.makedirs(
+        os.path.expanduser(settings['aw']['logs_folder']), exist_ok=True
+    )
+    for bucket in buckets.values():
+        if not bucket['type'] in settings['aw']['types']:
+            continue
+        if bucket['last_updated'] == last_updated.get(bucket['id'], None):
+            logging.info('Bucket %s already saved', bucket['id'])
+            continue
+        df = get_data(bucket['id'], last_updated.get(bucket['id'], None))
+        last_updated[bucket['id']] = bucket['last_updated']
+        if df is None:
+            logging.info('Bucket %s is empty', bucket['id'])
+            continue
+        bucket_type = bucket['type'].replace('.', '_')
+        hostname = bucket['hostname']
+        if hostname == 'unknown':
+            hostname = get_hostname()
+        filename = os.path.join(
+            os.path.expanduser(settings['aw']['logs_folder']),
+            f"{bucket_type}-{hostname}-{bucket['last_updated']}.csv"
+        )
+        df.to_csv(filename)
+        logging.info('Saved %s with %s events', filename, len(df))
+    save_last_updated(last_updated)
+#+end_src
+** Loading
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/load.py") :comments link
+:END:
+The required imports:
+#+begin_src python
+import glob
+import pandas as pd
+import os
+import re
+import logging
+
+from sqlalchemy.dialects.postgresql import insert
+from tqdm import tqdm
+
+from sqrt_data.api import settings, DBConn, HashDict
+from sqrt_data.models import Base
+from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
+from sqrt_data.parse.locations import LocationMatcher
+#+end_src
+
+The only exported function is the one that performs the loading:
+#+begin_src python
+__all__ = ['load']
+#+end_src
+
+Get all the dataframes to load:
+#+begin_src python
+def get_dataframes(h):
+    files = glob.glob(
+        f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
+    )
+    dfs_by_type = {}
+    for f in files:
+        if not h.is_updated(f):
+            continue
+        try:
+            df = pd.read_csv(f, lineterminator='\n', index_col=False)
+        except pd.errors.ParserError:
+            logging.error(f'Error parsing file: {f}')
+            continue
+        type_ = re.search(r'^\w+', os.path.basename(f)).group(0)
+        try:
+            dfs_by_type[type_].append(df)
+        except KeyError:
+            dfs_by_type[type_] = [df]
+        h.save_hash(f)
+    return dfs_by_type
+#+end_src
+
+Models by type:
+#+begin_src python
+MODELS = {
+    'afkstatus': AfkStatus,
+    'currentwindow': CurrentWindow,
+    'app_editor_activity': AppEditor,
+    'web_tab_current': WebTab
+}
+#+end_src
+
+Pre-processing the records. ActivityWatch saves all the timestamps with 0 UTC offset, so I here set the timestamps back to their original timezone.
+
+#+begin_src python
+def get_records(type_, df):
+    loc = LocationMatcher()
+    if type_ == 'afkstatus':
+        df['status'] = df['status'] == 'not-afk'
+    if type_ == 'web_tab_current':
+        df = df.rename({'tabCount': 'tab_count'}, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    locations = df.apply(
+        lambda row: loc.get_location(row.timestamp, row.hostname),
+        axis=1
+    )
+    df['location'] = [l[0] for l in locations]
+    df['timestamp'] = [l[1] for l in locations]
+    return df.to_dict(orient='records')
+#+end_src
+
+And perform the loading:
+#+begin_src python
+def load():
+    DBConn()
+    DBConn.create_schema('aw', Base)
+    with HashDict() as h:
+        dfs_by_type = get_dataframes(h)
+
+        with DBConn.get_session() as db:
+            for type_, dfs in tqdm(dfs_by_type.items()):
+                for df in dfs:
+                    entries = get_records(type_, df)
+                    db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
+            db.commit()
+        h.commit()
+#+end_src
+** Postprocessing
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/postprocess.py") :comments link
+:header-args:sql: :noweb-ref postprocess-sql
+:END:
+Because the data from ActivityWatch is somewhat scattered, the following postprocessing is necessary:
+1. filter active windows by not-afk status
+2. filter active browser tabs by not-afk status & active browser window
+
+And because there is a lot of data, some pre-aggregation is necessary to avoid loading the database in the live mode. I've considered implementing this part in Python but decided that PL/pgSQL would be eaiser.
+
+So first, initialize the tables the first level of post-processed data:
+#+begin_src sql
+drop procedure if exists aw.init_postprocessing();
+create procedure aw.init_postprocessing()
+    language plpgsql as
+$$
+begin
+    drop table if exists aw.notafkwindow cascade;
+    drop table if exists aw.notafktab cascade;
+    drop table if exists aw._notafkwindow_meta cascade;
+    create table aw.notafkwindow (like aw.currentwindow including all);
+    create table aw.notafktab (like aw.webtab including all);
+    create table aw._notafkwindow_meta (
+        date date primary key,
+        count int8
+    );
+
+    CREATE OR REPLACE VIEW aw._notafkwindow_meta_diff AS
+    WITH current_meta AS (
+        select date(timestamp) date, count(*) count
+        FROM aw.currentwindow
+        GROUP BY date(timestamp)
+        ORDER BY date ASC
+    )
+    SELECT CM.date
+    FROM current_meta CM
+             LEFT JOIN aw._notafkwindow_meta OM ON CM.date = OM.date
+    WHERE CM.count != OM.count OR OM.count IS NULL;
+end;
+$$;
+#+end_src
+
+Next, filtering the list of active windows. If:
+- an interval of using a program overlaps with an interval of being non-afk
+- an interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with an interval of being afk less than =aw.skip_afk_interval=
+add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
+
+After some time, I decided to add the invervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, an auxililary function to check the AFK status:
+#+begin_src sql
+drop function if exists aw.is_afk;
+create function aw.is_afk(status bool, duration float, app text, title text) returns bool
+    language plpgsql as
+$$
+begin
+    return status = true
+        OR (status = false AND duration < current_setting('aw.skip_afk_interval')::int AND
+            (app ~ current_setting('aw.skip_afk_apps') OR title ~ current_setting('aw.skip_afk_titles')));
+end;
+$$;
+#+end_src
+
+I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance, because otherwise doing such a join on a tables with around a million records is quite expesive.
+#+begin_src sql
+drop function if exists aw.get_notafkwindow;
+create function aw.get_notafkwindow(start_date timestamp, end_date timestamp)
+    returns table
+            (
+                like aw.currentwindow
+            )
+    language plpgsql
+AS
+$$
+begin
+    RETURN QUERY
+        WITH A AS (SELECT * FROM aw.afkstatus WHERE timestamp BETWEEN start_date AND end_date),
+             C AS (SELECT * FROM aw.currentwindow WHERE timestamp BETWEEN start_date AND end_date)
+        SELECT concat('afkw-', substring(C.id from '[0-9]+$'), '-', substring(A.id from '[0-9]+$'))::varchar(256) id,
+               C.bucket_id,
+               C.hostname,
+               C.location,
+               case
+                   when A.timestamp > C.timestamp then A.timestamp
+                   else C.timestamp end AS                                                                        timestamp,
+               extract(epoch from
+                       least(C.timestamp + C.duration * interval '1 second',
+                             A.timestamp + A.duration * interval '1 second') -
+                       greatest(A.timestamp, C.timestamp))                                                        duration,
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.app
+                   else 'AFK' end       as                                                                        app,
+               case
+                   when aw.is_afk(A.status, A.duration, app, title) then C.title
+                   else 'AFK' end       as                                                                        title
+        FROM A
+                 INNER JOIN C ON
+                ((A.timestamp, A.timestamp + A.duration * interval '1 second')
+                    overlaps
+                 (C.timestamp, C.timestamp + C.duration * interval '1 second')) AND A.hostname = C.hostname
+        ORDER BY timestamp DESC;
+end;
+$$;
+#+end_src
+
+Finally, we have to put all of that into the table. Previously, I had a materialized view which was refreshed every 24 hours, but it took 15-30 minutes to do the refresh precisely because the join is expensive.
+
+With that in mind, I've made a scheme where the data is preprocessed day by day only for unprocessed days. The day is considered unprocessed if the number of records in a day is changed.
+
+This turned out to be much faster, and even the full processing with that approach started to take just 20-30 seconds, so persisting whether the day was processed is not quite necessary. But I'll let it be like this as long it as works.
+
+The view to get the list of unprocessed days resides in =init_postprocessing=. The procedure to perform the processing:
+#+begin_src sql
+drop procedure if exists aw.postprocess_notafkwindow;
+create procedure aw.postprocess_notafkwindow()
+    language plpgsql AS
+$$
+DECLARE
+    date date;
+begin
+    FOR date IN SELECT * FROM aw._notafkwindow_meta_diff
+        LOOP
+            DELETE FROM aw.notafkwindow WHERE date(timestamp) = date;
+            INSERT INTO aw.notafkwindow
+            SELECT *
+            FROM aw.get_notafkwindow(date, date + interval '1 day');
+        end loop;
+    DELETE FROM aw._notafkwindow_meta;
+    INSERT INTO aw._notafkwindow_meta
+    select date(timestamp) date, count(*) count
+    FROM aw.currentwindow
+    GROUP BY date(timestamp)
+    ORDER BY date;
+end;
+$$;
+#+end_src
+
+And one materialized view to aggregate the window data and improve the dashboard performance a bit:
+#+begin_src sql
+drop procedure if exists aw.create_afkwindow_views();
+create procedure aw.create_afkwindow_views()
+    language plpgsql as
+$$
+begin
+    CREATE MATERIALIZED VIEW aw.notafkwindow_group AS
+    SELECT hostname, location, date(timestamp) date, sum(duration) / 60 total_hours, app, title
+    FROM aw.notafkwindow
+    GROUP BY hostname, location, date(timestamp), app, title;
+end;
+$$;
+#+end_src
+
+As for the browser data, one materialized view seems enough for the current quantities. I'll probably optimize this in a year or so.
+
+One problem here is that timestamps from the browser tab watcher do not quite align with ones from the current window watcher, so calculating overlaps between them givens deflated results. So I truncate the intervals from the current window data to 1 minute.
+#+begin_src sql
+drop procedure if exists aw.create_browser_views();
+create procedure aw.create_browser_views()
+    language plpgsql as
+$$
+begin
+    CREATE MATERIALIZED VIEW aw.webtab_active AS
+    WITH W AS (SELECT distinct date_trunc('second', timestamp) AS timestamp
+               FROM aw.notafkwindow
+               WHERE title ~ current_setting('aw.webtab_apps')
+               ORDER BY timestamp),
+         T AS (SELECT * FROM aw.webtab WHERE url !~ current_setting('aw.skip_urls'))
+    SELECT T.bucket_id,
+           T.location,
+           greatest(W.timestamp, T.timestamp) AS       timestamp,
+           extract(epoch from
+                   least(T.timestamp + T.duration * interval '1 second',
+                         W.timestamp + interval '1 minute') -
+                   greatest(W.timestamp, T.timestamp)) duration,
+           T.url,
+           T.title,
+           T.audible,
+           T.tab_count
+    FROM T
+             INNER JOIN W ON
+        ((W.timestamp, W.timestamp + interval '1 minute')
+            overlaps
+         (T.timestamp, T.timestamp + T.duration * interval '1 second'))
+    ORDER BY timestamp;
+end
+$$;
+#+end_src
+
+The Python part sets the database settings from the configuration file and executes the stuff above. I wanted to make a separate .sql file for that, but that would make packaging more complicated, so here goes noweb.
+#+begin_src python :noweb yes
+from sqrt_data.api import settings, DBConn
+
+__all__ = [
+    'postprocessing_set_sql', 'postprocessing_init', 'postprocessing_dispatch'
+]
+
+SQL = """
+<<postprocess-sql>>
+"""
+
+
+def update_settings(db):
+    db.execute(
+        f"""
+    SELECT set_config('aw.skip_afk_interval', '{settings['aw']['skip_afk_interval']}', false);
+    SELECT set_config('aw.skip_afk_apps', '{settings['aw']['skip_afk_apps']}', false);
+    SELECT set_config('aw.skip_afk_titles', '{settings['aw']['skip_afk_titles']}', false);
+    SELECT set_config('aw.webtab_apps', '{settings['aw']['webtab_apps']}', false);
+    SELECT set_config('aw.skip_urls', '{settings['aw']['skip_urls']}', false);
+    """
+    )
+
+
+def postprocessing_set_sql():
+    DBConn()
+    with DBConn.get_session() as db:
+        update_settings(db)
+        db.execute(SQL)
+        db.commit()
+
+def postprocessing_init():
+    DBConn()
+    with DBConn.get_session() as db:
+        update_settings(db)
+        db.execute("CALL aw.init_postprocessing();")
+        db.execute("CALL aw.create_afkwindow_views();")
+        db.execute("CALL aw.create_browser_views();")
+        db.commit()
+
+def postprocessing_dispatch():
+    DBConn()
+    with DBConn.get_session() as db:
+        update_settings(db)
+        db.execute("CALL aw.postprocess_notafkwindow();")
+        db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+        db.commit()
+#+end_src
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/aw.py") :comments link
+:END:
+The CLI interface via click.
+
+#+begin_src python
+import click
+from sqrt_data.parse import aw as aw_
+#+end_src
+
+Export a click group named "mpd".
+#+begin_src python
+__all__ = ['aw']
+
+@click.group(help='ActivityWatch stats')
+def aw():
+    pass
+#+end_src
+
+Save and load the buckets:
+#+begin_src python
+@aw.command(help='Save ActivityWatch buckets')
+@click.option('--force', '-f', is_flag=True)
+def save_buckets(force):
+    aw_.save_buckets(force)
+
+@aw.command(help='Load ActivityWatch buckets')
+def load():
+    aw_.load()
+#+end_src
+
+Posprocessing commands:
+#+begin_src python
+@aw.command(help='Set or update SQL definitions for postprocessing')
+def postprocessing_set_sql():
+    aw_.postprocessing_set_sql()
+
+@aw.command(help='Initialize postprocessing')
+def postprocessing_init():
+    aw_.postprocessing_init()
+
+@aw.command(help='Perform postprocessing')
+def postprocessing_dispatch():
+    aw_.postprocessing_dispatch()
+#+end_src

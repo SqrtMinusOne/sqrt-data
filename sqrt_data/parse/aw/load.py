@@ -1,70 +1,84 @@
+# [[file:../../../org/aw.org::*Loading][Loading:1]]
 import glob
 import pandas as pd
 import os
 import re
-from tqdm import tqdm
 import logging
 
-from sqrt_data.api import Config, DBConn, is_updated, save_hash
+from sqlalchemy.dialects.postgresql import insert
+from tqdm import tqdm
 
+from sqrt_data.api import settings, DBConn, HashDict
+from sqrt_data.models import Base
+from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
+from sqrt_data.parse.locations import LocationMatcher
+# Loading:1 ends here
 
-SCHEMA = 'aw'
+# [[file:../../../org/aw.org::*Loading][Loading:2]]
+__all__ = ['load']
+# Loading:2 ends here
 
-__all__ = ['load', 'fix_duplicates']
-
-
-def fix_duplicates():
-    DBConn()
-    with DBConn.get_session() as db:
-        db.execute('CREATE TABLE aw.currentwindow2 (LIKE aw.currentwindow)')
-        db.execute('INSERT INTO aw.currentwindow2 SELECT DISTINCT ON (id) * FROM aw.currentwindow')
-        db.execute('DROP TABLE aw.currentwindow CASCADE')
-        db.execute('ALTER TABLE aw.currentwindow2 RENAME TO currentwindow')
-
-        db.execute('CREATE TABLE aw.afkstatus2 (LIKE aw.afkstatus)')
-        db.execute('INSERT INTO aw.afkstatus2 SELECT DISTINCT ON (id) * FROM aw.afkstatus')
-        db.execute('DROP TABLE aw.afkstatus CASCADE')
-        db.execute('ALTER TABLE aw.afkstatus2 RENAME TO afkstatus')
-        db.commit()
-
-
-def load(dry_run=False):
+# [[file:../../../org/aw.org::*Loading][Loading:3]]
+def get_dataframes(h):
     files = glob.glob(
-        f'{os.path.expanduser(Config.AW_LOGS_FOLDER)}/*.csv'
+        f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
     )
     dfs_by_type = {}
     for f in files:
-        if not is_updated(f):
+        if not h.is_updated(f):
             continue
         try:
             df = pd.read_csv(f, lineterminator='\n', index_col=False)
         except pd.errors.ParserError:
-            if dry_run:
-                print(f'Error parsing file: {f}')
-            else:
-                logging.error(f'Error parsing file: {f}')
+            logging.error(f'Error parsing file: {f}')
             continue
         type_ = re.search(r'^\w+', os.path.basename(f)).group(0)
         try:
             dfs_by_type[type_].append(df)
         except KeyError:
             dfs_by_type[type_] = [df]
-        if not dry_run:
-            save_hash(f)
-        else:
-            print(f'Read: {f}')
+        h.save_hash(f)
+    return dfs_by_type
+# Loading:3 ends here
 
-    if not dry_run:
-        DBConn()
-        for type_, dfs in tqdm(dfs_by_type.items()):
-            for df in dfs:
-                ids = ', '.join([f"'{id_}'" for id_ in df.id])
-                if len(ids) > 0:
-                    DBConn.engine.execute(f'DELETE FROM {SCHEMA}.{type_} WHERE id IN ({ids})')
-                df.to_sql(
-                    type_,
-                    schema=SCHEMA,
-                    con=DBConn.engine,
-                    if_exists='append',
-                    index=False
-                )
+# [[file:../../../org/aw.org::*Loading][Loading:4]]
+MODELS = {
+    'afkstatus': AfkStatus,
+    'currentwindow': CurrentWindow,
+    'app_editor_activity': AppEditor,
+    'web_tab_current': WebTab
+}
+# Loading:4 ends here
+
+# [[file:../../../org/aw.org::*Loading][Loading:5]]
+def get_records(type_, df):
+    loc = LocationMatcher()
+    if type_ == 'afkstatus':
+        df['status'] = df['status'] == 'not-afk'
+    if type_ == 'web_tab_current':
+        df = df.rename({'tabCount': 'tab_count'}, axis=1)
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    locations = df.apply(
+        lambda row: loc.get_location(row.timestamp, row.hostname),
+        axis=1
+    )
+    df['location'] = [l[0] for l in locations]
+    df['timestamp'] = [l[1] for l in locations]
+    return df.to_dict(orient='records')
+# Loading:5 ends here
+
+# [[file:../../../org/aw.org::*Loading][Loading:6]]
+def load():
+    DBConn()
+    DBConn.create_schema('aw', Base)
+    with HashDict() as h:
+        dfs_by_type = get_dataframes(h)
+
+        with DBConn.get_session() as db:
+            for type_, dfs in tqdm(dfs_by_type.items()):
+                for df in dfs:
+                    entries = get_records(type_, df)
+                    db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
+            db.commit()
+        h.commit()
+# Loading:6 ends here

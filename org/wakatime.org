@@ -1,0 +1,263 @@
+#+TITLE: WakaTime data
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+[[https://wakatime.com/dashboard][WakaTime]] is a free service to log the programming activity.
+
+Unfortunately, the service is SaaS and the data is stored on the company's servers, so use it at your discretion.
+
+There are two ways to access the data:
+- The "official" API provides the complete data, but doesn't allow accessing the records older than 2 weeks without paid subscription.
+- The coding activity export provides the data for the entire time, but it is already aggregated to the daily format.
+
+The latter is interesting enough, so I'm fine with using it.
+
+The =sqrt_data.parse.wakatime= module consists of the two following parts:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/__init__.py")
+from .get_data import *
+from .load import *
+#+end_src
+
+* Get the data
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/get_data.py") :comments link
+:END:
+So, first we have to get a WakaTime dump. The seems to be no way to initiate the export with the API, which makes sense, but somehow it is possible to download the dump via API.
+
+So, import a few basic packages:
+#+begin_src python
+import base64
+import logging
+import os
+import requests
+
+from sqrt_data.api import settings
+#+end_src
+
+Export the function to get the data:
+#+begin_src python
+__all__ = ['get_data']
+#+end_src
+
+The function itself performs a request to WakaTime to check if there are available dumps. If there are, it downloads the dump do the temporary directory.
+#+begin_src python
+def get_data():
+    key = base64.b64encode(str.encode(settings["waka"]["api_key"])).decode('utf-8')
+    headers = {'Authorization': f'Basic {key}'}
+    r = requests.get(
+        f'{settings["waka"]["api_url"]}/users/current/datadumps',
+        headers=headers
+    )
+    data = r.json()['data']
+    if len(data) == 0:
+        logging.info('No WakaTime dumps found')
+        return
+
+    dump_data = data[0]
+    if dump_data['status'] != 'Completed':
+        logging.info('Dump not completed')
+        return
+
+    filename = f'wakatime-{dump_data["created_at"]}.json'
+    path = os.path.join(
+        os.path.expanduser(settings['general']['temp_data_folder']), filename
+    )
+    if os.path.exists(path):
+        logging.info('File already downloaded')
+        return
+
+    dump = requests.get(dump_data['download_url'])
+    with open(path, 'wb') as f:
+        f.write(dump.content)
+    logging.info('WakaTime dump downloaded to %s', filename)
+#+end_src
+
+* Parse the data
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/load.py") :comments link
+:END:
+
+Import the required functions:
+#+begin_src python
+import logging
+import glob
+import json
+import os
+from collections import deque
+
+import pandas as pd
+from tqdm import tqdm
+
+from sqrt_data.api import settings, DBConn, HashDict
+#+end_src
+
+Export the function which does the parsing and loading:
+#+begin_src python
+__all__ = ['load']
+#+end_src
+
+First, we need to get the path to the file with dump, which was downloaded in the previous section:
+#+begin_src python
+def get_dump_file():
+    files = glob.glob(
+        f'{os.path.expanduser(settings["general"]["temp_data_folder"])}/wakatime*.json'
+    )
+    if len(files) == 0:
+        logging.info('No WakaTime dumps found')
+        return None
+
+    files = sorted(files)
+    hashes = HashDict()
+
+    dump = files[-1]
+    if not hashes.is_updated(dump):
+        logging.info('Dump already loaded')
+        return None
+    return dump
+#+end_src
+
+Next, convert the dump to the set of DataFrames. Here is an outline of the dump structure:
+
+The dump is structured like this:
+- =user= - information about the user
+- =range= - looks like the start and the end of observations
+- =days= - An array of aggregated data per each day.
+
+An entry for a particular days is a dictionary with the following values:
+- =date= - the date in the =YYYY-MM-DD= format
+- =categories= - here starts the actual data
+- =dependencies=
+- =editors=
+- =languages=
+- =machines=
+- =operating_systems=
+- =grand_total=
+- =projects=
+
+A single datum normally consists of a few common time-related fields:
+- =decimal= - hours and minutes
+- =digital= - "HH:MM"
+- =hours=
+- =minutes=
+- =total_seconds=
+- =text=
+
+=grand_total= is just a single datum for the given day.
+
+=categories=, =dependencies=, =editors=, =languages=, =machines= and =operating_systems= are arrays of such datums, extended with the following fields:
+- =name= - the name of editor/category/etc
+- =percent= - percent for this day
+
+=projects= is a array of projects, which were active during the day. A project consists of the following fields
+- =name= - the name of the project
+- =branches=
+- =categories=
+- =dependencies=
+- =editors=
+- =entities= - the actual files!
+- =grand_total=
+- =languages=
+- =machines=
+- =operating_systems=
+
+Here, once again =grand_total= is a single datum for the given project for the given day.
+
+=branches=, =categories=, =dependencies=, =editors=, =entries=, =languages=, =machines= and =operating_systems= are arrays of the "extended datums".
+
+For the purposes of my analysis, I merge the data from the =projects= arrays.
+#+begin_src python
+def get_dfs(data):
+    deques = {}
+
+    for day in tqdm(data['days']):
+        date = day['date']
+        for project in day['projects']:
+            name = project['name']
+            for key, date_data in project.items():
+                if key == 'name':
+                    continue
+                try:
+                    data_deque = deques[key]
+                except KeyError:
+                    data_deque = deque()
+                    deques[key] = data_deque
+                if key == 'grand_total':
+                    data_deque.append(
+                        {
+                            "date": date,
+                            "project": name,
+                            **date_data
+                        }
+                    )
+                else:
+                    for datum in date_data:
+                        data_deque.append(
+                            {
+                                "date": date,
+                                "project": name,
+                                **datum
+                            }
+                        )
+
+    dfs = {name: pd.DataFrame(data) for name, data in deques.items()}
+    for name, df in dfs.items():
+        df['total_minutes'] = df['total_seconds'] / 60
+        df['date'] = pd.to_datetime(df['date'])
+        # df['date'] = df['date'].apply(lambda dt: dt.date())
+        df = df.drop(['total_seconds'], axis=1)
+        dfs[name] = df
+    return dfs
+#+end_src
+
+In the end I have 9 DataFrames with modified "extended datums" with =date= and =project= attributes.
+
+Finally, putting all of this together:
+#+begin_src python
+def load():
+    DBConn()
+    DBConn.create_schema(settings['waka']['schema'])
+
+    dump = get_dump_file()
+    if dump is None:
+        return
+
+    with open(dump, 'r') as f:
+        data = json.load(f)
+
+    dfs = get_dfs(data)
+
+    with HashDict() as h:
+        for name, df in tqdm(dfs.items()):
+            df.to_sql(
+                name,
+                schema=settings['waka']['schema'],
+                con=DBConn.engine,
+                if_exists='replace'
+            )
+            print(df)
+        h.save_hash(dump)
+        h.commit()
+#+end_src
+
+* CLI
+The CLI exposes the corresponding commands from the previous sections:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/waka.py")
+import click
+from sqrt_data.parse import wakatime
+
+
+@click.group(help='WakaTime stats')
+def waka():
+    pass
+
+
+@waka.command(help='Download the latest WakaTime dump')
+def get_data():
+    wakatime.get_data()
+
+
+@waka.command(help='Load the dump to DB')
+def load():
+    wakatime.load()
+#+end_src

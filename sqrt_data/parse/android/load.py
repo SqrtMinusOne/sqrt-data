@@ -1,25 +1,27 @@
+# [[file:../../../org/google-android.org::*Parsing][Parsing:1]]
 import pandas as pd
 from datetime import timedelta
 from urllib.parse import urlparse, parse_qs
 import re
 import os
+# Parsing:1 ends here
 
-from sqrt_data.api import DBConn, Config
+# [[file:../../../org/google-android.org::*Parsing][Parsing:2]]
+from sqrt_data.api import settings, DBConn
+# Parsing:2 ends here
 
-
-SOURCE = os.path.expanduser(Config.ANDROID_FILE)
-SCHEMA = 'android'
-
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:3]]
 __all__ = ['load']
+# Parsing:3 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:5]]
 def fix_time(time):
     # TODO
     time = time + timedelta(hours=3)
     return time
+# Parsing:5 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:6]]
 def get_app_id(datum):
     try:
         if pd.notna(datum['titleUrl']):
@@ -33,8 +35,9 @@ def get_app_id(datum):
     except KeyError:
         pass
     return datum['header']
+# Parsing:6 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:7]]
 def fix_name(name):
     if name.startswith('com.'):
         tokens = name.split('.')
@@ -43,15 +46,17 @@ def fix_name(name):
     name = re.sub(r'\(.*\)', '', name)
     name = name.strip()
     return name
+# Parsing:7 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:8]]
 def align_time(time):
     time = time.replace(minute=time.minute // 30 * 30, second=0, microsecond=0)
     return time
+# Parsing:8 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:9]]
 def parse_android():
-    df = pd.read_json(SOURCE)
+    df = pd.read_json(settings['google']['android_file'])
     df = df.drop(['products', 'details'], axis=1)
 
     df.time = pd.to_datetime(df.time)
@@ -73,11 +78,18 @@ def parse_android():
             .reset_index(drop=True)
     dfg = dfg.drop(['title', 'titleUrl'], axis=1)
     return dfg
+# Parsing:9 ends here
 
-
+# [[file:../../../org/google-android.org::*Parsing][Parsing:10]]
 def load():
     df = parse_android()
     DBConn()
-    DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {SCHEMA}')
+    DBConn.create_schema(settings['google']['android_schema'])
 
-    df.to_sql('Usage', schema=SCHEMA, con=DBConn.engine, if_exists='replace')
+    df.to_sql(
+        'Usage',
+        schema=settings['google']['android_schema'],
+        con=DBConn.engine,
+        if_exists='replace'
+    )
+# Parsing:10 ends here

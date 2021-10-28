@@ -4,7 +4,7 @@ services:
     postgres:
         restart: unless-stopped
         image: postgres
-        container_name: "data-pg-docker"
+        container_name: "sqrt-data-postgres"
         ports:
             - 5432:5432
         networks:
@@ -15,53 +15,62 @@ services:
             POSTGRES_DB: data
         volumes:
             - postgres_data:/data/postgres
-    # pgweb:
-    #     container_name: "data-pg-web"
-    #     restart: unless-stopped
-    #     image: sosedoff/pgweb
-    #     ports:
-    #         - 8081:8081
-    #     networks:
-    #         - postgres
-    #     environment:
-    #         DATABASE_URL: postgres://postgres:localdbpass@postgres:5432/data?sslmode=disable
-    #     depends_on:
-    #         - postgres
-    # # querytree:
-    #     container_name: "data-querytree"
-    #     restart: unless-stopped
-    #     image: d4software/querytree
-    #     ports:
-    #         - 8082:80
-    #     networks:
-    #         - postgres
-    #     environment:
-    #         Customization__AllowAdvancedQuery: "true"
-    #     depends_on:
-    #         - postgres
-    #metabase:
-    #    container_name: "data-metabase"
-    #    restart: unless-stopped
-    #    image: metabase/metabase
-    #    ports:
-    #        - 8083:3000
-    #    networks:
-    #        - postgres
-    #    depends_on:
-    #        - postgres
-    #    environment:
-    #        MB_DB_TYPE: postgres
-    #        MB_DB_DBNAME: metabase
-    #        MB_DB_PORT: 5432
-    #        MB_DB_USER: postgres
-    #        MB_DB_PASS: localdbpass
-    #        MB_DB_HOST: postgres
+    metabase:
+        container_name: "sqrt-data-metabase"
+        restart: unless-stopped
+        image: metabase/metabase
+        ports:
+            - 8083:3000
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            MB_DB_TYPE: postgres
+            MB_DB_DBNAME: metabase
+            MB_DB_PORT: 5432
+            MB_DB_USER: postgres
+            MB_DB_PASS: localdbpass
+            MB_DB_HOST: postgres
+    sqrt_data:
+        container_name: "sqrt-data"
+        build: .
+        restart: unless-stopped
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        volumes:
+            - type: bind
+              source: ./config.toml
+              target: /config.toml
+            - type: bind
+              source: ~/logs-sync-debug
+              target: /root/logs-sync-debug
+    backups:
+        image: prodrigestivill/postgres-backup-local
+        restart: always
+        volumes:
+            - ./backups:/backups
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            - POSTGRES_HOST=postgres
+            - POSTGRES_DB=data;metabase
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=localdbpass
+            - POSTGRES_EXTRA_OPTS=-Fc -Z9
+            - SCHEDULE=@daily
+            - BACKUP_KEEP_DAYS=7
+            - BACKUP_KEEP_WEEKS=4
+            - BACKUP_KEEP_MONTHS=2
+            - HEALTHCHECK_PORT=8080
 
 networks:
-  postgres:
-    driver: bridge
+    postgres:
+        driver: bridge
 
 volumes:
     postgres_data:
-    pgadmin:
-    widestage-db-data:

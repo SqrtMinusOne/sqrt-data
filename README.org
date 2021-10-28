@@ -1,9 +1,1 @@
-#+TITLE: sqrt-data
-
-A collection of scripts to gather various data from various sources and store it on my VPS.
-
-* Android setup
-Add to =.bashrc=:
-#+begin_src bash
-export ANDROID_PHONE="orchid"
-#+end_src
+org/index.org

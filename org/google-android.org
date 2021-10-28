@@ -1,0 +1,149 @@
+#+TITLE: Google's Android stats
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+Parsing Android activity data from [[https://takeout.google.com/settings/takeout?pli=1][Google Takeout]]. I don't use it anymore, as ActivityWatch for Android provides more detailed data (and doesn't share it with Google).
+
+So this is kept here for historic purposes more than anything else.
+
+* Parsing
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/android/load.py") :comments link
+:END:
+Some basic imports.
+#+begin_src python
+import pandas as pd
+from datetime import timedelta
+from urllib.parse import urlparse, parse_qs
+import re
+import os
+#+end_src
+
+Import the required functionality from the common API.
+#+begin_src python
+from sqrt_data.api import settings, DBConn
+#+end_src
+
+The only function we need to export is a function to load the JSON with the activity data to the database.
+#+begin_src python
+__all__ = ['load']
+#+end_src
+
+The =__init__.py= file for the parsing module looks like this:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/android/__init__.py")
+from .load import *
+#+end_src
+
+One issue with the Google data is that it the timestamp are stored in the UTC+0 timezone. As a "temporary" fix, I add +3 hours to get a timezone where I'm usually reside. A more permanent fix would to be to join this with geolocation data, but as I don't plan to use this data much more, this stays as it is.
+#+begin_src python
+def fix_time(time):
+    # TODO
+    time = time + timedelta(hours=3)
+    return time
+#+end_src
+
+Next, extract the application name from one record.
+#+begin_src python
+def get_app_id(datum):
+    try:
+        if pd.notna(datum['titleUrl']):
+            q = parse_qs(urlparse(datum['titleUrl']).query)
+            return q['id'][0]
+    except KeyError:
+        pass
+    try:
+        if datum['title'].startswith('Used'):
+            return ' '.join(datum['title'].split(' ')[1:])
+    except KeyError:
+        pass
+    return datum['header']
+#+end_src
+
+Make a application name more readable.
+#+begin_src python
+def fix_name(name):
+    if name.startswith('com.'):
+        tokens = name.split('.')
+        return ' '.join([t[0].upper() + t[1:] for t in tokens[1:]])
+    name = re.sub(r'(:|-|—|–).*$', '', name)
+    name = re.sub(r'\(.*\)', '', name)
+    name = name.strip()
+    return name
+#+end_src
+
+Round time to the interval of 30 minutes.
+#+begin_src python
+def align_time(time):
+    time = time.replace(minute=time.minute // 30 * 30, second=0, microsecond=0)
+    return time
+#+end_src
+
+Parse a JSON and get a DataFrame.
+#+begin_src python
+def parse_android():
+    df = pd.read_json(settings['google']['android_file'])
+    df = df.drop(['products', 'details'], axis=1)
+
+    df.time = pd.to_datetime(df.time)
+    df.time = df.time.apply(fix_time)
+
+    df['app_id'] = df.apply(get_app_id, axis=1)
+
+    app_names = {
+        app_name: fix_name(group.iloc[0]['header'])
+        for app_name, group in df.groupby('app_id')
+    }
+    df['app_name'] = df.app_id.apply(lambda id_: app_names[id_])
+    df.time = df.time.apply(align_time)
+
+    dfg = df.groupby(['app_name', 'time']) \
+            .agg(lambda x: x.iloc[0]) \
+            .reset_index() \
+            .sort_values('time', ascending=False) \
+            .reset_index(drop=True)
+    dfg = dfg.drop(['title', 'titleUrl'], axis=1)
+    return dfg
+#+end_src
+
+Put the DataFrame to the database.
+#+begin_src python
+def load():
+    df = parse_android()
+    DBConn()
+    DBConn.create_schema(settings['google']['android_schema'])
+
+    df.to_sql(
+        'Usage',
+        schema=settings['google']['android_schema'],
+        con=DBConn.engine,
+        if_exists='replace'
+    )
+#+end_src
+
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/android.py") :comments link
+:END:
+The CLI interface via click.
+
+Import click iteself and the parsing module.
+#+begin_src python
+import click
+from sqrt_data.parse import android as andc
+#+end_src
+
+Export a click group named "android".
+#+begin_src python
+__all__ = ['android']
+
+@click.group(help='Android stats')
+def android():
+    pass
+#+end_src
+
+The only command is to load the JSON to the database.
+#+begin_src python
+@android.command(help='Load to DB')
+def load():
+    andc.load()
+#+end_src
