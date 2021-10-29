@@ -1,15 +1,16 @@
+# [[file:../../org/service.org::*CLI][CLI:1]]
 import click
-
-from sqrt_data import service as sc
+from sqrt_data import service as service_
 
 __all__ = ['service']
 
 
-@click.group(help='Service actions')
+@click.group(help='Service')
 def service():
     pass
 
 
 @service.command(help='Compress old files')
 def compress():
-    sc.compress()
+    service_.compress()
+# CLI:1 ends here
