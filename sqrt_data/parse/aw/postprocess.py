@@ -94,7 +94,8 @@ begin
             DELETE FROM aw.notafkwindow WHERE date(timestamp) = date;
             INSERT INTO aw.notafkwindow
             SELECT *
-            FROM aw.get_notafkwindow(date, date + interval '1 day');
+            FROM aw.get_notafkwindow(date, date + interval '1 day')
+            ON CONFLICT DO UPDATE SET timestamp = EXCLUDED.timestamp, duration = EXCLUDED.duration;
         end loop;
     DELETE FROM aw._notafkwindow_meta;
     INSERT INTO aw._notafkwindow_meta
