@@ -1,4 +1,16 @@
-# [[file:../../org/service.org::*Compression logic][Compression logic:1]]
+#+TITLE: Service
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+* Compression
+As the data gets transferred between machines via CSV files, it is reasonable to compress the old ones.
+
+** Compression logic
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/service/compress.py") :comments link
+:END:
+The required imports:
+#+begin_src python
 import json
 import logging
 import os
@@ -9,18 +21,28 @@ import time
 import pandas as pd
 
 from sqrt_data.api import settings, HashDict
-# Compression logic:1 ends here
+#+end_src
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:2]]
+The only exported function is the one that performs the compression
+#+begin_src python
 __all__ = ['compress']
-# Compression logic:2 ends here
+#+end_src
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:4]]
+The corresponding =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/service/__init__.py")
+from .compress import *
+#+end_src
+
+So, first we get a group to which a particular file belongs. When the group is full, it will be compressed.
+
+#+begin_src python
 def get_date_group(timestamp):
     return timestamp // (60 * 60 * 24 * settings['archive']['days'])
-# Compression logic:4 ends here
+#+end_src
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:5]]
+A group is full if there is no change of a file with this timestamp appearing in this group. In accordance with this, a function to get files to archive:
+
+#+begin_src python
 def get_files_to_compress():
     with HashDict() as h:
         files = [f for f in h.keys() if os.path.exists(f)]
@@ -49,9 +71,10 @@ def get_files_to_compress():
         for (date_group,
              dir), g in df.groupby(['date_group', 'dir'])  # type: ignore
     ]
-# Compression logic:5 ends here
+#+end_src
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:6]]
+And a function dispatch the operation. It archives the old files and deletes the removed ones from this hash dictionary.
+#+begin_src python
 def compress():
     groups = get_files_to_compress()
     if len(groups) == 0:
@@ -66,7 +89,7 @@ def compress():
         subprocess.run(
             [
                 'tar', '-czvf', archive_name, '--remove-files',
-                *[os.path.relpath(f, dir) for f in files]
+                ,*[os.path.relpath(f, dir) for f in files]
             ],
             check=True,
             cwd=dir
@@ -77,4 +100,24 @@ def compress():
                 del h[f]
                 logging.info('Removed %s from HashDict', f)
         h.commit()
-# Compression logic:6 ends here
+#+end_src
+
+** CLI
+A CLI via click.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/service.py")
+import click
+from sqrt_data import service as service_
+
+__all__ = ['service']
+
+
+@click.group(help='Service')
+def service():
+    pass
+
+
+@service.command(help='Compress old files')
+def compress():
+    service_.compress()
+#+end_src

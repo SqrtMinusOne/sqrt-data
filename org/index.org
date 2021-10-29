@@ -346,6 +346,7 @@ cli.add_command(cli_modules.sleep)
 cli.add_command(cli_modules.mpd)
 cli.add_command(cli_modules.aw)
 cli.add_command(cli_modules.locations)
+cli.add_command(cli_modules.service)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
@@ -357,6 +358,7 @@ from .sleep import *
 from .mpd import *
 from .aw import *
 from .locations import *
+from .service import *
 #+end_src
 
 Two simple commands to work with file hashes.
@@ -465,7 +467,10 @@ else
 fi
 #+end_src
 
-The script is meant to be ran every hour.
+The script is meant to be ran every hour. On GNU Guix I've created the following MCron job:
+#+begin_src scheme
+(job "0 * * * * " "~/Code/data/sqrt-data/scripts/sync-logs.sh")
+#+end_src
 
 * Server side
 ** Docker

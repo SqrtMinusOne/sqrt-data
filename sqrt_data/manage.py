@@ -34,6 +34,7 @@ cli.add_command(cli_modules.sleep)
 cli.add_command(cli_modules.mpd)
 cli.add_command(cli_modules.aw)
 cli.add_command(cli_modules.locations)
+cli.add_command(cli_modules.service)
 # CLI entrypoint:4 ends here
 
 # [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:6]]

@@ -6,4 +6,5 @@ from .sleep import *
 from .mpd import *
 from .aw import *
 from .locations import *
+from .service import *
 # CLI entrypoint:5 ends here
