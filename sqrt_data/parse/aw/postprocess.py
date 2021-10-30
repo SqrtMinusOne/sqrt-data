@@ -95,7 +95,7 @@ begin
             INSERT INTO aw.notafkwindow
             SELECT *
             FROM aw.get_notafkwindow(date, date + interval '1 day')
-            ON CONFLICT DO UPDATE SET timestamp = EXCLUDED.timestamp, duration = EXCLUDED.duration;
+            ON CONFLICT (id) DO UPDATE SET timestamp = EXCLUDED.timestamp, duration = EXCLUDED.duration;
         end loop;
     DELETE FROM aw._notafkwindow_meta;
     INSERT INTO aw._notafkwindow_meta
@@ -111,7 +111,7 @@ create procedure aw.create_afkwindow_views()
 $$
 begin
     CREATE MATERIALIZED VIEW aw.notafkwindow_group AS
-    SELECT hostname, location, date(timestamp) date, sum(duration) / 60 total_hours, app, title
+    SELECT hostname, location, date(timestamp) date, sum(duration) / (60) total_minutes, app, title
     FROM aw.notafkwindow
     GROUP BY hostname, location, date(timestamp), app, title;
 end;
