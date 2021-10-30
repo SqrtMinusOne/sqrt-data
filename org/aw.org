@@ -498,7 +498,7 @@ create procedure aw.create_afkwindow_views()
 $$
 begin
     CREATE MATERIALIZED VIEW aw.notafkwindow_group AS
-    SELECT hostname, location, date(timestamp) date, sum(duration) / 60 total_hours, app, title
+    SELECT hostname, location, date(timestamp) date, sum(duration) / (60) total_minutes, app, title
     FROM aw.notafkwindow
     GROUP BY hostname, location, date(timestamp), app, title;
 end;
