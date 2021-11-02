@@ -66,8 +66,7 @@ host = 'postgres'
 port = 5432
 
 [general]
-root = '@format {env[HOME]}/logs-sync-debug'
-hash_json = '@format {this.general.root}/hash.json'
+root = '@format {env[HOME]}/logs-sync'
 hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
 
@@ -437,6 +436,7 @@ tqdm
 beautifulsoup4
 dynaconf
 sqlitedict
+schedule
 #+end_src
 * Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
@@ -476,20 +476,54 @@ The script is meant to be ran every hour. On GNU Guix I've created the following
 ** Docker
 The server part uses Docker, because I'm in love with Docker.
 
-So, as I need the server to run commands on schedule, the easiest way to do this would be to use cron:
-#+begin_src scheme :tangle (my/org-prj-dir "deploy/sqrt-cron.guile")
-(job "0  2 * * *" "python -m sqrt_data waka get_data && python -m sqrt_data waka load")
-(job "15 2 * * *" "python -m sqrt_data mpd load_library && python -m sqrt_data mpd load_logs")
-(job "30 2 * * *" "python -m sqrt_data sleep load")
-(job "45 2 * * *" "python -m sqrt_data aw load && python -m sqrt_data aw preprocessing_dispatch")
+I need to run commands on schedule, and the easiest way to do that seems to be to use [[https://github.com/dbader/schedule][this Python package]]. I couldn't make cron work because of $PATH issues, but I didn't try too hard.
+
+Also, I'm just fine with running the commands as suprocesses, because I already have a CLI.
+
+#+begin_src python :tangle (my/org-prj-dir "tasks.py")
+import time
+import schedule
+import subprocess
+
+
+def waka_task():
+    p = subprocess.run(['sqrt_data', 'waka', 'get_data'])
+    if p.returncode != 0:
+        return
+    subprocess.run(['sqrt_data', 'waka', 'load'])
+
+
+def mpd_task():
+    p = subprocess.run(['sqrt_data', 'mpd', 'load_library'])
+    if p.returncode != 0:
+        return
+    subprocess.run(['sqrt_data', 'mpd', 'load_logs'])
+
+
+def sleep_task():
+    subprocess.run(['sqrt_data', 'sleep', 'load'])
+
+
+def aw_task():
+    p = subprocess.run(['sqrt_data', 'aw', 'load'])
+    if p.returncode != 0:
+        return
+    suprocess.run('sqrt_data', 'aw', 'preprocessing_dispatch')
+
+
+schedule.every().day.at('00:00').do(waka_task)
+schedule.every().day.at('01:00').do(mpd_task)
+schedule.every().day.at('02:00').do(sleep_task)
+schedule.every().day.at('03:00').do(aw_task)
+
+while True:
+    schedule.run_pending()
+    time.sleep(1)
 #+end_src
 
 A Dockerfile for the program:
 #+begin_src dockerfile :tangle (my/org-prj-dir "Dockerfile")
 FROM python:3.10-buster
-# Install mcron
-RUN apt-get update && apt-get install -y mcron
-
 # Install sqrt-data
 WORKDIR "sqrt_data/"
 COPY requirements.txt .
@@ -500,10 +534,10 @@ ENV PYTHONPATH="$PYTHONPATH:/sqrt_data"
 
 # Copy the configuration and apply the crontab
 WORKDIR "/"
-COPY deploy/sqrt-cron.guile ./
+COPY tasks.py ./
 
 # Run mcron
-CMD mcron sqrt-cron.guile
+CMD python tasks.py
 #+end_src
 
 A docker-compose file. Consists of 4 services:
@@ -572,7 +606,7 @@ services:
             - postgres
         environment:
             - POSTGRES_HOST=postgres
-            - POSTGRES_DB=data;metabase
+            - POSTGRES_DB=data,metabase
             - POSTGRES_USER=postgres
             - POSTGRES_PASSWORD=localdbpass
             - POSTGRES_EXTRA_OPTS=-Fc -Z9
