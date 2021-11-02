@@ -58,7 +58,7 @@ services:
             - postgres
         environment:
             - POSTGRES_HOST=postgres
-            - POSTGRES_DB=data;metabase
+            - POSTGRES_DB=data,metabase
             - POSTGRES_USER=postgres
             - POSTGRES_PASSWORD=localdbpass
             - POSTGRES_EXTRA_OPTS=-Fc -Z9
