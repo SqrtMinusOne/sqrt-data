@@ -438,7 +438,7 @@ beautifulsoup4
 dynaconf
 sqlitedict
 #+end_src
-* Machines
+* Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
 
 ** Sync script
@@ -478,10 +478,10 @@ The server part uses Docker, because I'm in love with Docker.
 
 So, as I need the server to run commands on schedule, the easiest way to do this would be to use cron:
 #+begin_src scheme :tangle (my/org-prj-dir "deploy/sqrt-cron.guile")
-(job "0  2 * * *" "sqrt_data waka get_data && sqrt_data waka load")
-(job "15 2 * * *" "sqrt_data mpd load_library && sqrt_data mpd load_logs")
-(job "30 2 * * *" "sqrt_data sleep load")
-(job "45 2 * * *" "sqrt_data aw load && sqrt_data aw preprocessing_dispatch")
+(job "0  2 * * *" "python -m sqrt_data waka get_data && python -m sqrt_data waka load")
+(job "15 2 * * *" "python -m sqrt_data mpd load_library && python -m sqrt_data mpd load_logs")
+(job "30 2 * * *" "python -m sqrt_data sleep load")
+(job "45 2 * * *" "python -m sqrt_data aw load && python -m sqrt_data aw preprocessing_dispatch")
 #+end_src
 
 A Dockerfile for the program:
@@ -589,7 +589,7 @@ networks:
 volumes:
     postgres_data:
 #+end_src
-** Instructions
+** Basic deployement instructions
 The server deployement is as follows.
 1. Clone the repository
 2. Change the settings in =config.toml= and =docker-compose.yml= according to the setup. What has to be changed:
