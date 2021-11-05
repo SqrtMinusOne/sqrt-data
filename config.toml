@@ -6,8 +6,7 @@ host = 'postgres'
 port = 5432
 
 [general]
-root = '@format {env[HOME]}/logs-sync-debug'
-hash_json = '@format {this.general.root}/hash.json'
+root = '@format {env[HOME]}/logs-sync'
 hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
 
