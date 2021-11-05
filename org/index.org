@@ -440,9 +440,15 @@ schedule
 #+end_src
 * Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
+** Installation details
+As of now, until I made the repository public so I could write a Guix package or something, I just install the package in a conda environment.
+
+Don't forget to copy config.toml to ~/.config/sqrt-data/config.toml
 
 ** Sync script
 Here I use [[https://github.com/deajan/osync][osync]] to perform the syncronization. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+
+Ideally I want this to be shipped with the application itself, so I'll definitely rewrite this in Python and make another CLI module at some point.
 
 #+begin_src bash :tangle (my/org-prj-dir "scripts/sync-logs.sh")
 PYTHON="/home/pavel/.conda/envs/data/bin/python"
