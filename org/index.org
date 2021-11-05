@@ -493,17 +493,17 @@ import subprocess
 
 
 def waka_task():
-    p = subprocess.run(['sqrt_data', 'waka', 'get_data'])
+    p = subprocess.run(['sqrt_data', 'waka', 'get-data'])
     if p.returncode != 0:
         return
     subprocess.run(['sqrt_data', 'waka', 'load'])
 
 
 def mpd_task():
-    p = subprocess.run(['sqrt_data', 'mpd', 'load_library'])
+    p = subprocess.run(['sqrt_data', 'mpd', 'load-library'])
     if p.returncode != 0:
         return
-    subprocess.run(['sqrt_data', 'mpd', 'load_logs'])
+    subprocess.run(['sqrt_data', 'mpd', 'load-logs'])
 
 
 def sleep_task():
@@ -514,7 +514,7 @@ def aw_task():
     p = subprocess.run(['sqrt_data', 'aw', 'load'])
     if p.returncode != 0:
         return
-    suprocess.run('sqrt_data', 'aw', 'preprocessing_dispatch')
+    subprocess.run('sqrt_data', 'aw', 'preprocessing-dispatch')
 
 
 schedule.every().day.at('00:00').do(waka_task)
