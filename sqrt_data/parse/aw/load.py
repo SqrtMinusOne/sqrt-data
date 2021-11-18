@@ -57,6 +57,8 @@ def get_records(type_, df):
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'web_tab_current':
         df = df.rename({'tabCount': 'tab_count'}, axis=1)
+    if type_ == 'editor':
+        df = df.drop('branch', axis=1)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     locations = df.apply(
         lambda row: loc.get_location(row.timestamp, row.hostname),
