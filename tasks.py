@@ -26,7 +26,7 @@ def aw_task():
     p = subprocess.run(['sqrt_data', 'aw', 'load'])
     if p.returncode != 0:
         return
-    subprocess.run('sqrt_data', 'aw', 'postprocessing-dispatch')
+    subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
 
 
 schedule.every().day.at('00:00').do(waka_task)
