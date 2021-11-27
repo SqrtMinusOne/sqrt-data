@@ -32,7 +32,7 @@ schema = 'aw'
 skip_afk_interval = '900'
 skip_afk_apps = '^(zoom|mpv)$'
 skip_afk_titles = '^(YouTube)$'
-webtab_apps = '^(Nightly)$'
+webtab_apps = '^(Nightly|firefox)$'
 skip_urls = '^(moz-extension|about:blank)'
 
 [aw.apps_convert]

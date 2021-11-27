@@ -267,6 +267,7 @@ def save_buckets(force=False):
 :END:
 The required imports:
 #+begin_src python
+import furl
 import glob
 import pandas as pd
 import os
