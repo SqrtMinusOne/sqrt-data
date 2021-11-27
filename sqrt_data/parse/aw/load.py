@@ -58,7 +58,7 @@ def get_records(type_, df):
         df['status'] = df['status'] == 'not-afk'
     if type_ == 'currentwindow':
         df['app'] = df['app'].apply(
-            lambda app: settings['aw']['mapping'].get(app, app)
+            lambda app: settings['aw']['apps_convert'].get(app, app)
         )
     if type_ == 'web_tab_current':
         df = df.rename({'tabCount': 'tab_count'}, axis=1)
