@@ -98,6 +98,7 @@ skip_urls = '^(moz-extension|about:blank)'
 [aw.apps_convert]
 Nightly = 'firefox'
 Chromium-browser = 'Chromium'
+unknown = 'Emacs' # EXWM
 
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
