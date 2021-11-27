@@ -341,9 +341,11 @@ def get_records(type_, df):
             furl.furl(url).remove(
                 args=True, fragment=True, fragment_path=True, path=True
             ).url
+            for url in df['url']
         ]
         df['url_no_params'] = [
             furl.furl(url).remove(args=True, fragment=True).url
+            for url in df['url']
         ]
     if type_ == 'app_editor_activity':
         if 'branch' in df.columns:
