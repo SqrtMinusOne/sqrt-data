@@ -35,6 +35,10 @@ skip_afk_titles = '^(YouTube)$'
 webtab_apps = '^(Nightly)$'
 skip_urls = '^(moz-extension|about:blank)'
 
+[aw.apps_convert]
+Nightly = 'firefox'
+Chromium-browser = 'Chromium'
+
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'

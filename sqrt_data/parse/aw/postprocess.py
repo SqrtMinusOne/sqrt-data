@@ -135,9 +135,11 @@ begin
                          W.timestamp + interval '1 minute') -
                    greatest(W.timestamp, T.timestamp)) duration,
            T.url,
+           T.site,
+           T.url_no_params,
            T.title,
            T.audible,
-           T.tab_count
+           T.tab_count,
     FROM T
              INNER JOIN W ON
         ((W.timestamp, W.timestamp + interval '1 minute')
