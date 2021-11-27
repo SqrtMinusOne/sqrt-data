@@ -9,6 +9,8 @@ class WebTab(Bucket):
     __table_args__ = {'schema': 'aw'}
 
     url = sa.Column(sa.Text(), nullable=False)
+    site = sa.Column(sa.Text(), nullable=False)
+    url_no_params = sa.Column(sa.Text(), nullable=False)
     title = sa.Column(sa.Text(), nullable=False)
     audible = sa.Column(sa.Boolean(), nullable=False)
     incognito = sa.Column(sa.Boolean(), nullable=False)

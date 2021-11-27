@@ -8,6 +8,7 @@ from datetime import datetime
 
 import pandas as pd
 import requests
+import furl
 
 from sqrt_data.api import settings, get_hostname
 # Saving:1 ends here

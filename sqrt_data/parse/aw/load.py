@@ -55,15 +55,26 @@ def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
         df['status'] = df['status'] == 'not-afk'
+    if type_ == 'currentwindow':
+        df['app'] = df['app'].apply(
+            lambda app: settings['aw']['mapping'].get(app, app)
+        )
     if type_ == 'web_tab_current':
         df = df.rename({'tabCount': 'tab_count'}, axis=1)
+        df['site'] = [
+            furl.furl(url).remove(
+                args=True, fragment=True, fragment_path=True, path=True
+            ).url
+        ]
+        df['url_no_params'] = [
+            furl.furl(url).remove(args=True, fragment=True).url
+        ]
     if type_ == 'app_editor_activity':
         if 'branch' in df.columns:
             df = df.drop('branch', axis=1)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     locations = df.apply(
-        lambda row: loc.get_location(row.timestamp, row.hostname),
-        axis=1
+        lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
     )
     df['location'] = [l[0] for l in locations]
     df['timestamp'] = [l[1] for l in locations]

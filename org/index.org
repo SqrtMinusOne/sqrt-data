@@ -95,6 +95,10 @@ skip_afk_titles = '^(YouTube)$'
 webtab_apps = '^(Nightly)$'
 skip_urls = '^(moz-extension|about:blank)'
 
+[aw.apps_convert]
+Nightly = 'firefox'
+Chromium-browser = 'Chromium'
+
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'
@@ -437,6 +441,7 @@ beautifulsoup4
 dynaconf
 sqlitedict
 schedule
+furl
 #+end_src
 * Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
