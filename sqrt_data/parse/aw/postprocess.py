@@ -146,6 +146,10 @@ begin
             overlaps
          (T.timestamp, T.timestamp + T.duration * interval '1 second'))
     ORDER BY timestamp;
+    CREATE MATERIALIZED VIEW aw.webtab_group AS
+    SELECT location, date(timestamp) date, sum(duration) / (60) total_minutes, site, url_no_params, audible, tab_count
+    FROM aw.webtab_active
+    GROUP BY location, date(timestamp), site, url_no_params, audible, tab_count;
 end
 $$;
 """
@@ -186,5 +190,6 @@ def postprocessing_dispatch():
         db.execute("CALL aw.postprocess_notafkwindow();")
         db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
         db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
         db.commit()
 # Postprocessing:7 ends here
