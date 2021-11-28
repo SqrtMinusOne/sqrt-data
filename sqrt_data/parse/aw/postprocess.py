@@ -122,17 +122,20 @@ create procedure aw.create_browser_views()
 $$
 begin
     CREATE MATERIALIZED VIEW aw.webtab_active AS
-    WITH W AS (SELECT distinct date_trunc('second', timestamp) AS timestamp
-               FROM aw.notafkwindow
-               WHERE title ~ current_setting('aw.webtab_apps')
-               ORDER BY timestamp),
-         T AS (SELECT * FROM aw.webtab WHERE url !~ current_setting('aw.skip_urls'))
+    WITH W AS (
+        SELECT *
+        FROM aw.notafkwindow
+        WHERE app ~ current_setting('aw.webtab_apps')
+        ORDER BY timestamp
+    ),
+         T AS (SELECT * FROM aw.webtab WHERE url !~ current_setting('aw.skip_urls')),
+    res AS (
     SELECT T.bucket_id,
            T.location,
            greatest(W.timestamp, T.timestamp) AS       timestamp,
            extract(epoch from
                    least(T.timestamp + T.duration * interval '1 second',
-                         W.timestamp + interval '1 minute') -
+                         W.timestamp + W.duration * interval '1 second') -
                    greatest(W.timestamp, T.timestamp)) duration,
            T.url,
            T.site,
@@ -142,10 +145,11 @@ begin
            T.tab_count
     FROM T
              INNER JOIN W ON
-        ((W.timestamp, W.timestamp + interval '1 minute')
+        ((W.timestamp, W.timestamp + W.duration * interval '1 second')
             overlaps
          (T.timestamp, T.timestamp + T.duration * interval '1 second'))
-    ORDER BY timestamp;
+    ORDER BY T.timestamp, T.id)
+    SELECT * FROM res;
     CREATE MATERIALIZED VIEW aw.webtab_group AS
     SELECT location, date(timestamp) date, sum(duration) / (60) total_minutes, site, url_no_params, title, audible, tab_count
     FROM aw.webtab_active
