@@ -1,4 +1,4 @@
-# [[file:../../org/index.org::*Configuration][Configuration:1]]
+# [[file:../../org/core.org::*Configuration][Configuration:1]]
 import os
 
 from dynaconf import Dynaconf

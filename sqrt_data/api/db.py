@@ -1,4 +1,4 @@
-# [[file:../../org/index.org::*Database][Database:1]]
+# [[file:../../org/core.org::*Database][Database:1]]
 import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine

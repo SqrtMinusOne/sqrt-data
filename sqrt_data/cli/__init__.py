@@ -1,4 +1,4 @@
-# [[file:../../org/index.org::*CLI entrypoint][CLI entrypoint:5]]
+# [[file:../../org/core.org::*CLI entrypoint][CLI entrypoint:5]]
 from .android import *
 from .waka import *
 from .vk import *

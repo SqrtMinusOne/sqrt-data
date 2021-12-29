@@ -1,4 +1,4 @@
-# [[file:../../org/index.org::*Common API][Common API:1]]
+# [[file:../../org/core.org::*Common API][Common API:1]]
 from .config import *
 from .db import *
 from .hash import *

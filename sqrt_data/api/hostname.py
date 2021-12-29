@@ -1,4 +1,4 @@
-# [[file:../../org/index.org::*Hostname][Hostname:1]]
+# [[file:../../org/core.org::*Hostname][Hostname:1]]
 import os
 import socket
 
