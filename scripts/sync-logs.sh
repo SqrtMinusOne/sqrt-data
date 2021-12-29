@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [[file:../org/index.org::*Sync script][Sync script:1]]
+# [[file:../org/core.org::*Sync script][Sync script:1]]
 PYTHON="/home/pavel/.conda/envs/data/bin/python"
 CLI="-m sqrt_data"
 DATA="$(hostname): $(date +"%Y-%m-%d")"

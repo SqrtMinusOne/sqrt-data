@@ -1,4 +1,4 @@
-# [[file:org/index.org::*setup.py and requirements][setup.py and requirements:1]]
+# [[file:org/core.org::*setup.py and requirements][setup.py and requirements:1]]
 from setuptools import find_packages, setup
 
 setup(

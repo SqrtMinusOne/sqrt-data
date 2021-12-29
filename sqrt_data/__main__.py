@@ -1,4 +1,4 @@
-# [[file:../org/index.org::*CLI entrypoint][CLI entrypoint:8]]
+# [[file:../org/core.org::*CLI entrypoint][CLI entrypoint:8]]
 from .manage import cli
 
 if __name__ == '__main__':

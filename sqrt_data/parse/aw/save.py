@@ -86,11 +86,15 @@ def save_buckets(force=False):
     for bucket in buckets.values():
         if not bucket['type'] in settings['aw']['types']:
             continue
-        if bucket['last_updated'] == last_updated.get(bucket['id'], None):
+        if 'aw-watcher-web' in bucket['id']:
+            last_updated_id = f'{bucket["id"]}-{get_hostname()}'
+        else:
+            last_updated_id = bucket['id']
+        if bucket['last_updated'] == last_updated.get(last_updated_id, None):
             logging.info('Bucket %s already saved', bucket['id'])
             continue
-        df = get_data(bucket['id'], last_updated.get(bucket['id'], None))
-        last_updated[bucket['id']] = bucket['last_updated']
+        df = get_data(bucket['id'], last_updated.get(last_updated_id, None))
+        last_updated[last_updated_id] = bucket['last_updated']
         if df is None:
             logging.info('Bucket %s is empty', bucket['id'])
             continue

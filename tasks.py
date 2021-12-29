@@ -1,4 +1,4 @@
-# [[file:org/index.org::*Docker][Docker:1]]
+# [[file:org/core.org::*Docker][Docker:1]]
 import time
 import schedule
 import subprocess
