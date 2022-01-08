@@ -12,6 +12,8 @@ There are two ways to access the data:
 
 The latter is interesting enough, so I'm fine with using it.
 
+Edit <2022-01-07 Fri>: WakaTime now provides full access to the data without subscription via data export.
+
 The =sqrt_data.parse.wakatime= module consists of the two following parts:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/__init__.py")
 from .get_data import *
@@ -22,7 +24,7 @@ from .load import *
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/get_data.py") :comments link
 :END:
-So, first we have to get a WakaTime dump. The seems to be no way to initiate the export with the API, which makes sense, but somehow it is possible to download the dump via API.
+So, first, we have to get a WakaTime dump. The seems to be no way to initiate the export with the API, which makes sense, but somehow it is possible to download the dump via API.
 
 So, import a few basic packages:
 #+begin_src python
@@ -39,7 +41,7 @@ Export the function to get the data:
 __all__ = ['get_data']
 #+end_src
 
-The function itself performs a request to WakaTime to check if there are available dumps. If there are, it downloads the dump do the temporary directory.
+The function itself performs a request to WakaTime to check if there are available dumps. If there are, it downloads the dump to the temporary directory.
 #+begin_src python
 def get_data():
     key = base64.b64encode(str.encode(settings["waka"]["api_key"])).decode('utf-8')

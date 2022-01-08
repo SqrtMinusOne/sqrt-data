@@ -2,9 +2,9 @@
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
-Working with my location history. I don't change the location too much, but it's still interesting add that datapoint. Also, ActivityWatch and some other apps cast all timestamps to UTC, so it is necessary to restore the original timezone.
+Working with my location history. I don't change the location too much, but it's still interesting to add that datapoint. Also, ActivityWatch and some other apps cast all timestamps to UTC, so it is necessary to restore the original timezone.
 
-There is actually little reason to store this in database, as it's just a handful of csv files which manage with Org mode. So it's just a class which provides functionality for matching timestamps and hostnames with location.
+There is little reason to store this in the database, as it's just a handful of CSV files that I manage with Org-mode. So it's just a class that provides functionality for matching timestamps and hostnames with the location.
 
 * Matching locations
 :PROPERTIES:

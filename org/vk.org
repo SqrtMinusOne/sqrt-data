@@ -12,7 +12,7 @@ Also, I don't use the platform for anything but messaging, so I won't parse anyt
 :END:
 The dump itself is a set of HTML files, which is a bit awkward to parse.
 
-So, we will need all kinds of packages to parse the HMTL, convert in DataFrames and put it to the database:
+So, we will need all kinds of packages to parse the HMTL, convert in DataFrames, and put it to the database:
 
 #+begin_src python
 import pandas as pd
@@ -71,7 +71,7 @@ def parse_date_russian(date):
     return is_edited, date
 #+end_src
 
-The dump is structured as follows: the root folder has the "messages" folder. The latter has one directory per each target, and the invidual directory has a set of HTML files with messages.
+The dump is structured as follows: the root folder has the "messages" folder. The latter has one directory per target, and the individual directory has a set of HTML files with messages.
 
 So, the following function parses one HTML file. More specifically, it returns a target name (be it a group chat or a single user) and a DataFrame with the following columns:
 - =name= - user/chat name

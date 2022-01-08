@@ -7,7 +7,7 @@ This file contains the core API of the project and things related to the deploye
 
 * Python CLI
 ** Common API
-This is my preferred way of writing Python modules. The =__init__.py= file imports all the required files with a star import, and the those files have the exported entities in the =__all__= variable.
+This is my preferred way of writing Python modules. The =__init__.py= file imports all the required files with a star import, and those files have the exported entities in the =__all__= variable.
 
 That way I can import things like this: =from sqrt_data.api import settings=.
 
@@ -19,7 +19,7 @@ from .hostname import *
 #+end_src
 
 *** Configuration
-Let's start with configuration.
+Let's start with the configuration.
 
 My configuration library of choice for Python is [[https://github.com/rochacbruno/dynaconf][dynaconf]]. I like it because it allows for some simple logic in the config files, e.g. dynamic variables.
 
@@ -106,16 +106,16 @@ tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
 hostnames_csv = '@format {this.general.root}/csv/loc_hostnames.csv'
 #+end_src
 *** Database
-My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project before the 2.0 version was announced, so some of the usage may reflect the old patterns.
+My favorite Python ORM framework is [[https://www.sqlalchemy.org/][SQLAlchemy]]. I've started this project before the 2.0 version was announced, so some of the usages may reflect the old patterns.
 
 Also, I am using some actual ORM models here, but wherever I can, I trust pandas to manage tables for me.
 
-I have a bunch of options of writing such files:
+I have a bunch of options for writing such files:
 - if I use noweb, I can't use =M-x org-babel-detangle=
 - if I write one huge block, I can't interweave the code with comments
 - if I write small blocks, blocks with class methods would have to be indented and I can't use =C-c '=
 
-So I opt for noweb. Fortunately, this seems to be the only class in the entire project, because I adopted it from another project which was designed with Object-Oriented Paradigm in mind.
+So I opt for noweb. Fortunately, this seems to be the only class in the entire project, because I adopted it from another project which was designed with an Object-Oriented Paradigm in mind.
 
 This class stores the state in the class variables and all of its methods are static, so really it's nothing more than an aggregation of global variables. Now I'd make it singleton if I were to design this from scratch, but hey, it works.
 
@@ -238,9 +238,11 @@ def md5sum(filename):
     return res.split(' ')[0]
 #+end_src
 
-Second, how do we actually store the hashes? I was using a huge JSON file for some time, but during the refactoring I've came to an idea that something like SQLite would make more sense. [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] seems to be a reasonable wrapper which does exactly what I want, so I'll use that as a base.
+Second, how do we store the hashes? I was using a huge JSON file for some time, but during the refactoring, I've come to the idea that something like SQLite would make more sense. [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] seems to be a reasonable wrapper that does exactly what I want, so I'll use that as a base.
 
-One note here is that the module crashes with message that =libgcc_s.so.1= cannot be found, which seems to be a problem with my Anaconda + Guix setup. [[https://stackoverflow.com/questions/64797838/libgcc-s-so-1-must-be-installed-for-pthread-cancel-to-work][This answer]] on StackOverflow has helped.
+Edit <2022-01-08 Sat>: (TODO) I realized that there's little reason to store the hashes in a separate database. I should refactor that to store the hashes in the central database at some point.
+
+One note here is that the module crashes with a message that =libgcc_s.so.1= cannot be found, which seems to be a problem with my Anaconda + Guix setup. [[https://stackoverflow.com/questions/64797838/libgcc-s-so-1-must-be-installed-for-pthread-cancel-to-work][This answer]] on StackOverflow has helped.
 #+begin_src python
 import ctypes
 libgcc_s = ctypes.CDLL('libgcc_s.so.1')
@@ -295,7 +297,7 @@ def get_hostname():
 :END:
 We need an entrypoint for the CLI. My CLI library of choice is [[https://click.palletsprojects.com/en/8.0.x/][click]].
 
-Also, [[https://github.com/magmax/python-inquirer][python-inquirer]] is nice library to query the user for something.
+Also, [[https://github.com/magmax/python-inquirer][python-inquirer]] is a nice library to query the user for something.
 #+begin_src python
 import logging
 
@@ -431,6 +433,7 @@ furl
 #+end_src
 * Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
+
 ** Installation details
 As of now, until I made the repository public so I could write a Guix package or something, I just install the package in a conda environment.
 
@@ -471,11 +474,11 @@ The script is meant to be ran every hour. On GNU Guix I've created the following
 
 * Server side
 ** Docker
-The server part uses Docker, because I'm in love with Docker.
+The server part uses Docker because I'm in love with Docker.
 
 I need to run commands on schedule, and the easiest way to do that seems to be to use [[https://github.com/dbader/schedule][this Python package]]. I couldn't make cron work because of $PATH issues, but I didn't try too hard.
 
-Also, I'm just fine with running the commands as suprocesses, because I already have a CLI.
+Also, I'm just fine with running the commands as subprocesses, because I already have a CLI.
 
 #+begin_src python :tangle (my/org-prj-dir "tasks.py")
 import time
@@ -536,8 +539,6 @@ COPY tasks.py ./
 # Run mcron
 CMD python tasks.py
 #+end_src
-
-TODO mkdir tmp/sqrt-data
 
 A docker-compose file. Consists of 4 services:
 - PostgresSQL database
@@ -624,12 +625,12 @@ volumes:
     postgres_data:
 #+end_src
 ** Basic deployement instructions
-The server deployement is as follows.
+The server deployment is as follows.
 1. Clone the repository
 2. Change the settings in =config.toml= and =docker-compose.yml= according to the setup. What has to be changed:
    - The folder with logs has to be mounted to the container. The mount path has to be setup in =config.toml= in =general.root=.
    - =database.host= should be set to "postgres"
-   - It makes sense to change password in =database.password= and in the compose file.
+   - It makes sense to change the password in =database.password= and in the compose file.
 3. Create a database for metabase. To do that, run:
    #+begin_src bash :eval no
    docker-compose up postgres
@@ -645,7 +646,7 @@ The server deployement is as follows.
    CREATE DATABASE metabase;
    #+end_src
 
-   It may make sense to make a separate user for metabase here.
+   It may make sense to make a separate user for Metabase here.
 4. Check if everything works correctly.
    - Metabase instance should be available at http://localhost:8083/
    - Run =docker exec -it sqrt-data /bin/bash=:
