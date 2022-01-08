@@ -8,7 +8,7 @@
 
 This is an agglomeration of self-quantification scripts I've written over the years.
 
-The basic ideas are as follows:
+The basic principles are:
 - I don't want to do a lot of (or any) manual work to collect the data. I'd rather have tools collect statistics in the background so I could process them later.
 - The tools have to be able to give away the data in machine-readable formats.
 - Wherever possible, I want to own my data.
