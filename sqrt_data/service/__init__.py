@@ -1,3 +1,4 @@
-# [[file:../../org/service.org::*Compression logic][Compression logic:3]]
+# [[file:../../org/service.org::*Service module][Service module:1]]
 from .compress import *
-# Compression logic:3 ends here
+from .sync import *
+# Service module:1 ends here

@@ -54,6 +54,7 @@ port = 5432
 root = '@format {env[HOME]}/logs-sync'
 hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
+sync_log_file = '@format {this.general.root}/sync.log'
 
 [archive]
 days = 31
@@ -286,7 +287,6 @@ import os
 import socket
 
 __all__ = ['get_hostname']
-
 
 def get_hostname():
     return os.environ.get('ANDROID_PHONE', socket.gethostname())
