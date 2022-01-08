@@ -4,7 +4,7 @@
 
 Parsing the data from [[https://www.musicpd.org/][Music Player Daemon]].
 
-As it doesn't log too many data by default, I've mage a small Python app called [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]] to collect the required information. The app creates one log file in the csv format per day and hostname.
+As it doesn't log too much data by default, I've mage a small Python app called [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]] to collect the required information. The app creates one log file in the CSV format per day and hostname.
 
 * Models
 One case where I use the SQLAlchemy models for some reason.
@@ -79,7 +79,8 @@ from .SongListened import *
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/save_library.py") :comments link
 :END:
-First, in accordance to the outlined way of exchanging the data between the machines and the server, we need to save the MPD library to the csv format.
+
+First, in accordance with the outlined way of exchanging the data between the machines and the server, we need to save the MPD library to the CSV format.
 
 Imports are as follows:
 #+begin_src python
@@ -254,6 +255,7 @@ def load_logs():
 
 ** Postprocessing
 To make things a bit easier for Metabase, I create a view with the data from these two tables:
+
 #+begin_src sql :noweb-ref mpd-view
 drop view if exists mpd."MpdSongListened";
 create view mpd."MpdSongListened" as

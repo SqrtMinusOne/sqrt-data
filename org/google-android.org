@@ -34,7 +34,7 @@ The =__init__.py= file for the parsing module looks like this:
 from .load import *
 #+end_src
 
-One issue with the Google data is that it the timestamp are stored in the UTC+0 timezone. As a "temporary" fix, I add +3 hours to get a timezone where I'm usually reside. A more permanent fix would to be to join this with geolocation data, but as I don't plan to use this data much more, this stays as it is.
+One issue with the Google data is that the timestamp is stored in the UTC+0 timezone. As a "temporary" fix, I add +3 hours to get a timezone where I usually reside. A more permanent fix would be to join this with geolocation data, but as I don't plan to use this data much more, this stays as it is.
 #+begin_src python
 def fix_time(time):
     # TODO
@@ -126,7 +126,7 @@ def load():
 :END:
 The CLI interface via click.
 
-Import click iteself and the parsing module.
+Import click itself and the parsing module.
 #+begin_src python
 import click
 from sqrt_data.parse import android as andc

@@ -2,8 +2,7 @@
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
-[[https://activitywatch.net/][ActivityWatch]] is FOSS time tracker software.
-
+[[https://activitywatch.net/][ActivityWatch]] is a FOSS time tracker software.
 
 * Models
 The [[https://docs.activitywatch.net/en/latest/buckets-and-events.html][data model]] in the program is pretty reasonable. The top-level entry is called "bucket", which has the following attributes:
@@ -146,7 +145,7 @@ from .postprocess import *
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/save.py") :comments link
 :END:
-As usual, first we need to export the data from ActivityWatch to csv format.
+As usual, first, we need to export the data from ActivityWatch to CSV format.
 
 The required imports:
 #+begin_src python
@@ -169,7 +168,8 @@ The only exported function is =save_buckets=:
 __all__ = ['save_buckets']
 #+end_src
 
-Buckets have a lot of data, so we need to somehow save the point of last download. That seems to be fine to persist in a JSON file.
+Buckets have a lot of data, so we need to somehow save the point of the last download. That seems to be fine to persist in a JSON file.
+
 #+begin_src python
 def get_last_updated():
     data = {}
@@ -384,11 +384,12 @@ def load():
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/postprocess.py") :comments link
 :header-args:sql: :noweb-ref postprocess-sql
 :END:
+
 Because the data from ActivityWatch is somewhat scattered, the following postprocessing is necessary:
 1. filter active windows by not-afk status
 2. filter active browser tabs by not-afk status & active browser window
 
-And because there is a lot of data, some pre-aggregation is necessary to avoid loading the database in the live mode. I've considered implementing this part in Python but decided that PL/pgSQL would be eaiser.
+And because there is a lot of data, some pre-aggregation is necessary to avoid loading the database in live mode. I've considered implementing this part in Python but decided that PL/pgSQL would be easier.
 
 So first, initialize the tables the first level of post-processed data:
 #+begin_src sql
@@ -422,7 +423,7 @@ end;
 $$;
 #+end_src
 
-Next, filtering the list of active windows. If:
+Next, filter the list of active windows. If:
 - an interval of using a program overlaps with an interval of being non-afk
 - an interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with an interval of being afk less than =aw.skip_afk_interval=
 add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
@@ -441,7 +442,7 @@ end;
 $$;
 #+end_src
 
-I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance, because otherwise doing such a join on a tables with around a million records is quite expesive.
+I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance because otherwise doing such a join on tables with around a million records is quite expensive.
 #+begin_src sql
 drop function if exists aw.get_notafkwindow;
 create function aw.get_notafkwindow(start_date timestamp, end_date timestamp)
@@ -483,11 +484,11 @@ end;
 $$;
 #+end_src
 
-Finally, we have to put all of that into the table. Previously, I had a materialized view which was refreshed every 24 hours, but it took 15-30 minutes to do the refresh precisely because the join is expensive.
+Finally, we have to put all of that into the table. Previously, I had a materialized view that was refreshed every 24 hours, but it took 15-30 minutes to do the refresh precisely because the join is expensive.
 
 With that in mind, I've made a scheme where the data is preprocessed day by day only for unprocessed days. The day is considered unprocessed if the number of records in a day is changed.
 
-This turned out to be much faster, and even the full processing with that approach started to take just 20-30 seconds, so persisting whether the day was processed is not quite necessary. But I'll let it be like this as long it as works.
+This turned out to be much faster, and even the full processing with that approach started to take just 20-30 seconds, so persisting whether the day was processed is not quite necessary. But I'll let it be like this as long it works.
 
 The view to get the list of unprocessed days resides in =init_postprocessing=. The procedure to perform the processing:
 #+begin_src sql
