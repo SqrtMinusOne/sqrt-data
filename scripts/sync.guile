@@ -1,1 +1,0 @@
-(job "0 * * * * " "~/Code/data/sqrt-data/scripts/sync-logs.sh")

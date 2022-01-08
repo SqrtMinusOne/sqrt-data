@@ -4,6 +4,7 @@
 
 * Service module
 The corresponding =__init__.py=:
+
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/service/__init__.py")
 from .compress import *
 from .sync import *
@@ -116,23 +117,23 @@ import os
 import subprocess
 from datetime import datetime
 
-from sqrt_data.api import settings, get_hostname
+from sqrt_data.api import settings, get_hostname, is_android
+from sqrt_data.parse import aw, mpd
 #+end_src
 
-To make packaging easier, all the CLI apps are written down like this:
+To make packaging easier, all CLI apps are written down like this:
 #+begin_src python
-EXEC_GREP = 'grep'
 EXEC_OSYNC = 'osync.sh'
 EXEC_NOTIFY_SEND = 'notify-send'
 #+end_src
-The idea being that names will be replaced with a full path in the recipe.
+The idea being that names will be replaced with full paths in the recipe.
 
 The only exported function is one to perform the sync.
 #+begin_src python
 __all__ = ['sync_logs']
 #+end_src
 
-I want the sync be performed only once a day on a given hostname. Thus, the following string has to be written to the =sync_log_file= after a successful syncronization:
+I want the sync be performed only once a day on a given hostname. Thus, the following string has to be written to the =sync.log_file= after a successful syncronization:
 #+begin_src python
 def log_string():
     date_string = datetime.strftime(datetime.now(), "%Y-%m-%d")
@@ -142,18 +143,50 @@ def log_string():
 A function to check if that string exists in the file:
 #+begin_src python
 def check_today_sync():
-    result = subprocess.run(
-        [EXEC_GREP, '-F',
-         log_string(), settings.general.sync_log_file]
-    )
-    return result.returncode == 0
+    if not os.path.exists(settings.sync.log_file):
+        return False
+    string = log_string()
+    with open(settings.sync.log_file, 'r') as f:
+        for line in f:
+            if line.strip() == string:
+                return True
+    return False
 #+end_src
 
+And a function to append that string to the file:
+#+begin_src python
+def set_today_sync():
+    with open(settings.sync.log_file, 'a') as f:
+        f.write(log_string() + '\n')
+#+end_src
+
+Now, performing the actual sync.
 #+begin_src python
 def sync_logs(force=False):
     if not force and check_today_sync():
         print('Already synced today!')
         return
+    mpd.save_library()
+    aw.save_buckets(force)
+    subprocess.run(
+        [
+            EXEC_OSYNC, f'--initiator={settings.general.root}',
+            f'--target={settings.sync.target}'
+        ],
+        env={
+            'RSYNC_EXCLUDE_PATTERN': 'sync.log',
+            'CREATE_DIRS': 'yes',
+            'REMOTE_HOST_PING': 'false',
+            'PATH': os.environ['PATH']
+        },
+        check=True
+    )
+    if not is_android():
+        subprocess.run(
+            [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
+            env={'DISPLAY': ':0', **os.environ}
+        )
+    set_today_sync()
 #+end_src
 
 * CLI
@@ -175,8 +208,8 @@ def service():
 def compress():
     service_.compress()
 
-@service.command()
-@click.option('--force', '-f', is_flag=True, help='Sync logs')
+@service.command(help='Sync logs')
+@click.option('--force', '-f', is_flag=True)
 def sync_logs(force):
     service_.sync_logs(force)
 #+end_src

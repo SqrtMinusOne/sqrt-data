@@ -2,8 +2,10 @@
 import os
 import socket
 
-__all__ = ['get_hostname']
+__all__ = ['get_hostname', 'is_android']
 
+def is_android():
+    return os.environ.get('ANDROID_PHONE') is not None
 
 def get_hostname():
     return os.environ.get('ANDROID_PHONE', socket.gethostname())

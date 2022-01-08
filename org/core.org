@@ -54,7 +54,10 @@ port = 5432
 root = '@format {env[HOME]}/logs-sync'
 hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
-sync_log_file = '@format {this.general.root}/sync.log'
+
+[sync]
+log_file = '@format {this.general.root}/sync.log'
+target = 'ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync'
 
 [archive]
 days = 31
@@ -286,10 +289,94 @@ We need a way to distinguish between machines on which the app is running. The e
 import os
 import socket
 
-__all__ = ['get_hostname']
+__all__ = ['get_hostname', 'is_android']
+
+def is_android():
+    return os.environ.get('ANDROID_PHONE') is not None
 
 def get_hostname():
     return os.environ.get('ANDROID_PHONE', socket.gethostname())
+#+end_src
+** Cron tasks
+Some tasks have to be run on schedule on both server and client. The easiest way to do that seems to be to use [[https://github.com/dbader/schedule][this Python package]].
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/tasks/__init__.py")
+from .server import *
+from .client import *
+#+end_src
+
+*** Server
+Tasks to be executed on a server on a regular basis. I'm using subprocesses because it's more stable here.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/tasks/server.py")
+import time
+import schedule
+import subprocess
+
+__all__ = ['run_server_cron']
+
+
+def waka_task():
+    p = subprocess.run(['sqrt_data', 'waka', 'get-data'])
+    if p.returncode != 0:
+        return
+    subprocess.run(['sqrt_data', 'waka', 'load'])
+
+
+def mpd_task():
+    p = subprocess.run(['sqrt_data', 'mpd', 'load-library'])
+    if p.returncode != 0:
+        return
+    subprocess.run(['sqrt_data', 'mpd', 'load-logs'])
+
+
+def sleep_task():
+    subprocess.run(['sqrt_data', 'sleep', 'load'])
+
+
+def aw_task():
+    p = subprocess.run(['sqrt_data', 'aw', 'load'])
+    if p.returncode != 0:
+        return
+    subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
+
+
+def run_server_cron():
+    schedule.every().day.at('00:00').do(waka_task)
+    schedule.every().day.at('01:00').do(mpd_task)
+    schedule.every().day.at('02:00').do(sleep_task)
+    schedule.every().day.at('03:00').do(aw_task)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+#+end_src
+*** Client
+Client has just one task to sync logs to be executed every hour.
+
+The actual sync happens only once a day, but this approach is an easy way to ensure that the sync will happen. E.g., if at one hour sync failed because there was no internet, it will retry the next hour.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/tasks/client.py")
+import schedule
+import time
+import logging
+from sqrt_data.service import sync_logs
+
+__all__ = ['run_client_cron']
+
+
+def client_task():
+    try:
+        sync_logs()
+    except Exception:
+        logging.exception('Sync error!')
+
+
+def run_client_cron():
+    schedule.every().hour.do(client_task)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
 #+end_src
 ** CLI entrypoint
 :PROPERTIES:
@@ -307,6 +394,7 @@ import inquirer
 
 from sqrt_data.api import HashDict, settings, get_hostname
 from sqrt_data import cli as cli_modules
+from sqrt_data import tasks
 #+end_src
 
 A simple logging setup.
@@ -354,13 +442,17 @@ from .service import *
 
 Two simple commands to work with file hashes.
 #+begin_src python
-@cli.command()
+@click.group(help='Working with hashes')
+def hash():
+    pass
+
+@hash.command()
 def hash_list():
     hashes = HashDict()
     hashes.report()
 
 
-@cli.command()
+@hash.command()
 @click.option('-n', '--name', required=False, type=str)
 def hash_toggle(name):
     with HashDict() as h:
@@ -375,6 +467,28 @@ def hash_toggle(name):
         h.toggle_hash(os.path.join(settings.general.root, name))
         logging.info('Toggled hash for %s', name)
         h.commit()
+
+cli.add_command(hash)
+#+end_src
+
+Also commands to initalize "cron jobs":
+#+begin_src python
+@click.group(help='Initialize recurring tasks. Meant to be run in a service or such')
+def cron():
+    pass
+
+
+@cron.command()
+def run_server_cron():
+    tasks.run_server_cron()
+
+
+@cron.command()
+def run_client_cron():
+    tasks.run_client_cron()
+
+
+cli.add_command(cron)
 #+end_src
 
 Finally, to make this work, we have to invoke =cli()= in case =manage.py= is the main module. That is, when invoked with =python -m sqrt_data.manage=.
@@ -431,95 +545,19 @@ sqlitedict
 schedule
 furl
 #+end_src
-* Client side
+* Deployement
+** Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
 
-** Installation details
 As of now, until I made the repository public so I could write a Guix package or something, I just install the package in a conda environment.
 
-Don't forget to copy config.toml to ~/.config/sqrt-data/config.toml
+Don't forget to copy config.toml to ~/.config/sqrt-data/config.toml.
 
-** Sync script
-Here I use [[https://github.com/deajan/osync][osync]] to perform the syncronization. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+Run =sqrt_data cron run-client-cron= in background.
 
-Ideally I want this to be shipped with the application itself, so I'll definitely rewrite this in Python and make another CLI module at some point.
-
-#+begin_src bash :tangle (my/org-prj-dir "scripts/sync-logs.sh")
-PYTHON="/home/pavel/.conda/envs/data/bin/python"
-CLI="-m sqrt_data"
-DATA="$(hostname): $(date +"%Y-%m-%d")"
-LOG_FILE="/home/pavel/logs-sync/sync.log"
-
-TODAY_SYNC=$(grep -F "$DATA" $LOG_FILE)
-
-if [ ! -z "$TODAY_SYNC" ] && [ "$1" != '-F' ]; then
-    echo "Already synced today";
-else
-    $PYTHON $CLI mpd save-library
-    $PYTHON $CLI aw save-buckets
-    export RSYNC_EXCLUDE_PATTERN="sync.log"
-    export CREATE_DIRS=yes
-    export REMOTE_HOST_PING=false
-    osync.sh --initiator=/home/pavel/logs-sync --target=ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync || exit 1
-    echo "$(hostname): $(date +"%Y-%m-%d %H:%m")" >> $LOG_FILE
-    export DISPLAY=:0
-    notify-send "Syncronization" "Logs submitted to the server"
-fi
-#+end_src
-
-The script is meant to be ran every hour. On GNU Guix I've created the following MCron job:
-#+begin_src scheme
-(job "0 * * * * " "~/Code/data/sqrt-data/scripts/sync-logs.sh")
-#+end_src
-
-* Server side
-** Docker
+** Server side
+*** Docker
 The server part uses Docker because I'm in love with Docker.
-
-I need to run commands on schedule, and the easiest way to do that seems to be to use [[https://github.com/dbader/schedule][this Python package]]. I couldn't make cron work because of $PATH issues, but I didn't try too hard.
-
-Also, I'm just fine with running the commands as subprocesses, because I already have a CLI.
-
-#+begin_src python :tangle (my/org-prj-dir "tasks.py")
-import time
-import schedule
-import subprocess
-
-
-def waka_task():
-    p = subprocess.run(['sqrt_data', 'waka', 'get-data'])
-    if p.returncode != 0:
-        return
-    subprocess.run(['sqrt_data', 'waka', 'load'])
-
-
-def mpd_task():
-    p = subprocess.run(['sqrt_data', 'mpd', 'load-library'])
-    if p.returncode != 0:
-        return
-    subprocess.run(['sqrt_data', 'mpd', 'load-logs'])
-
-
-def sleep_task():
-    subprocess.run(['sqrt_data', 'sleep', 'load'])
-
-
-def aw_task():
-    p = subprocess.run(['sqrt_data', 'aw', 'load'])
-    if p.returncode != 0:
-        return
-    subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
-
-
-schedule.every().day.at('00:00').do(waka_task)
-schedule.every().day.at('01:00').do(mpd_task)
-schedule.every().day.at('02:00').do(sleep_task)
-schedule.every().day.at('03:00').do(aw_task)
-
-while True:
-    schedule.run_pending()
-    time.sleep(1)
-#+end_src
 
 A Dockerfile for the program:
 #+begin_src dockerfile :tangle (my/org-prj-dir "Dockerfile")
@@ -532,12 +570,10 @@ COPY sqrt_data/ setup.py ./
 RUN pip install .
 ENV PYTHONPATH="$PYTHONPATH:/sqrt_data"
 
-# Copy the configuration and apply the crontab
 WORKDIR "/"
-COPY tasks.py ./
+RUN mkdir /tmp/sqrt-data
 
-# Run mcron
-CMD python tasks.py
+CMD sqrt_data cron run-server-cron
 #+end_src
 
 A docker-compose file. Consists of 4 services:
@@ -624,7 +660,7 @@ networks:
 volumes:
     postgres_data:
 #+end_src
-** Basic deployement instructions
+*** Basic deployement instructions
 The server deployment is as follows.
 1. Clone the repository
 2. Change the settings in =config.toml= and =docker-compose.yml= according to the setup. What has to be changed:

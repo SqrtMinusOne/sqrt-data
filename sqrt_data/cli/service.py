@@ -14,8 +14,8 @@ def service():
 def compress():
     service_.compress()
 
-@service.command()
-@click.option('--force', '-f', is_flag=True, help='Sync logs')
+@service.command(help='Sync logs')
+@click.option('--force', '-f', is_flag=True)
 def sync_logs(force):
     service_.sync_logs(force)
 # CLI:1 ends here
