@@ -7,9 +7,7 @@ COPY sqrt_data/ setup.py ./
 RUN pip install .
 ENV PYTHONPATH="$PYTHONPATH:/sqrt_data"
 
-# Copy the configuration and apply the crontab
 WORKDIR "/"
-COPY tasks.py ./
+RUN mkdir /tmp/sqrt-data
 
-# Run mcron
-CMD python tasks.py
+CMD sqrt_data cron run-server-cron

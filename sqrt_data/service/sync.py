@@ -3,11 +3,11 @@ import os
 import subprocess
 from datetime import datetime
 
-from sqrt_data.api import settings, get_hostname
+from sqrt_data.api import settings, get_hostname, is_android
+from sqrt_data.parse import aw, mpd
 # Sync:1 ends here
 
 # [[file:../../org/service.org::*Sync][Sync:2]]
-EXEC_GREP = 'grep'
 EXEC_OSYNC = 'osync.sh'
 EXEC_NOTIFY_SEND = 'notify-send'
 # Sync:2 ends here
@@ -24,16 +24,46 @@ def log_string():
 
 # [[file:../../org/service.org::*Sync][Sync:5]]
 def check_today_sync():
-    result = subprocess.run(
-        [EXEC_GREP, '-F',
-         log_string(), settings.general.sync_log_file]
-    )
-    return result.returncode == 0
+    if not os.path.exists(settings.sync.log_file):
+        return False
+    string = log_string()
+    with open(settings.sync.log_file, 'r') as f:
+        for line in f:
+            if line.strip() == string:
+                return True
+    return False
 # Sync:5 ends here
 
 # [[file:../../org/service.org::*Sync][Sync:6]]
+def set_today_sync():
+    with open(settings.sync.log_file, 'a') as f:
+        f.write(log_string() + '\n')
+# Sync:6 ends here
+
+# [[file:../../org/service.org::*Sync][Sync:7]]
 def sync_logs(force=False):
     if not force and check_today_sync():
         print('Already synced today!')
         return
-# Sync:6 ends here
+    mpd.save_library()
+    aw.save_buckets(force)
+    subprocess.run(
+        [
+            EXEC_OSYNC, f'--initiator={settings.general.root}',
+            f'--target={settings.sync.target}'
+        ],
+        env={
+            'RSYNC_EXCLUDE_PATTERN': 'sync.log',
+            'CREATE_DIRS': 'yes',
+            'REMOTE_HOST_PING': 'false',
+            'PATH': os.environ['PATH']
+        },
+        check=True
+    )
+    if not is_android():
+        subprocess.run(
+            [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
+            env={'DISPLAY': ':0', **os.environ}
+        )
+    set_today_sync()
+# Sync:7 ends here

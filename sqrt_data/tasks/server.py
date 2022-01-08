@@ -1,7 +1,9 @@
-# [[file:org/core.org::*Docker][Docker:1]]
+# [[file:../../org/core.org::*Server][Server:1]]
 import time
 import schedule
 import subprocess
+
+__all__ = ['run_server_cron']
 
 
 def waka_task():
@@ -29,12 +31,13 @@ def aw_task():
     subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
 
 
-schedule.every().day.at('00:00').do(waka_task)
-schedule.every().day.at('01:00').do(mpd_task)
-schedule.every().day.at('02:00').do(sleep_task)
-schedule.every().day.at('03:00').do(aw_task)
+def run_server_cron():
+    schedule.every().day.at('00:00').do(waka_task)
+    schedule.every().day.at('01:00').do(mpd_task)
+    schedule.every().day.at('02:00').do(sleep_task)
+    schedule.every().day.at('03:00').do(aw_task)
 
-while True:
-    schedule.run_pending()
-    time.sleep(1)
-# Docker:1 ends here
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+# Server:1 ends here
