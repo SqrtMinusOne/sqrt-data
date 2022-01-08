@@ -1,4 +1,4 @@
-# [[file:../../org/service.org::*Compression logic][Compression logic:1]]
+# [[file:../../org/service.org::*Compression][Compression:1]]
 import json
 import logging
 import os
@@ -9,18 +9,18 @@ import time
 import pandas as pd
 
 from sqrt_data.api import settings, HashDict
-# Compression logic:1 ends here
+# Compression:1 ends here
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:2]]
+# [[file:../../org/service.org::*Compression][Compression:2]]
 __all__ = ['compress']
-# Compression logic:2 ends here
+# Compression:2 ends here
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:4]]
+# [[file:../../org/service.org::*Compression][Compression:3]]
 def get_date_group(timestamp):
     return timestamp // (60 * 60 * 24 * settings['archive']['days'])
-# Compression logic:4 ends here
+# Compression:3 ends here
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:5]]
+# [[file:../../org/service.org::*Compression][Compression:4]]
 def get_files_to_compress():
     with HashDict() as h:
         files = [f for f in h.keys() if os.path.exists(f)]
@@ -49,9 +49,9 @@ def get_files_to_compress():
         for (date_group,
              dir), g in df.groupby(['date_group', 'dir'])  # type: ignore
     ]
-# Compression logic:5 ends here
+# Compression:4 ends here
 
-# [[file:../../org/service.org::*Compression logic][Compression logic:6]]
+# [[file:../../org/service.org::*Compression][Compression:5]]
 def compress():
     groups = get_files_to_compress()
     if len(groups) == 0:
@@ -77,4 +77,4 @@ def compress():
                 del h[f]
                 logging.info('Removed %s from HashDict', f)
         h.commit()
-# Compression logic:6 ends here
+# Compression:5 ends here

@@ -2,13 +2,17 @@
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
-* Compression
-As the data gets transferred between machines via CSV files, it is reasonable to compress the old ones.
-
-** Compression logic
+* Service module
+The corresponding =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/service/__init__.py")
+from .compress import *
+from .sync import *
+#+end_src
+** Compression
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/service/compress.py") :comments link
 :END:
+As the data gets transferred between machines via CSV files, it is reasonable to compress the old ones.
 
 The required imports:
 #+begin_src python
@@ -29,10 +33,6 @@ The only exported function is the one that performs the compression
 __all__ = ['compress']
 #+end_src
 
-The corresponding =__init__.py=:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/service/__init__.py")
-from .compress import *
-#+end_src
 
 So, first we get a group to which a particular file belongs. When the group is full, it will be compressed.
 
@@ -103,7 +103,60 @@ def compress():
         h.commit()
 #+end_src
 
-** CLI
+** Sync
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data/service/sync.py")
+:END:
+Syncronizing the =logs-sync= folder between client machines and the server. Previously, this was a bash script, but I decided to make it a proper Python module to ease making this a Guix package.
+
+I use [[https://github.com/deajan/osync][osync]] to perform the syncronization. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+
+#+begin_src python
+import os
+import subprocess
+from datetime import datetime
+
+from sqrt_data.api import settings, get_hostname
+#+end_src
+
+To make packaging easier, all the CLI apps are written down like this:
+#+begin_src python
+EXEC_GREP = 'grep'
+EXEC_OSYNC = 'osync.sh'
+EXEC_NOTIFY_SEND = 'notify-send'
+#+end_src
+The idea being that names will be replaced with a full path in the recipe.
+
+The only exported function is one to perform the sync.
+#+begin_src python
+__all__ = ['sync_logs']
+#+end_src
+
+I want the sync be performed only once a day on a given hostname. Thus, the following string has to be written to the =sync_log_file= after a successful syncronization:
+#+begin_src python
+def log_string():
+    date_string = datetime.strftime(datetime.now(), "%Y-%m-%d")
+    return f'{get_hostname()}: {date_string}'
+#+end_src
+
+A function to check if that string exists in the file:
+#+begin_src python
+def check_today_sync():
+    result = subprocess.run(
+        [EXEC_GREP, '-F',
+         log_string(), settings.general.sync_log_file]
+    )
+    return result.returncode == 0
+#+end_src
+
+#+begin_src python
+def sync_logs(force=False):
+    if not force and check_today_sync():
+        print('Already synced today!')
+        return
+#+end_src
+
+* CLI
 A CLI via click.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/service.py")
@@ -121,4 +174,9 @@ def service():
 @service.command(help='Compress old files')
 def compress():
     service_.compress()
+
+@service.command()
+@click.option('--force', '-f', is_flag=True, help='Sync logs')
+def sync_logs(force):
+    service_.sync_logs(force)
 #+end_src

@@ -46,5 +46,5 @@ Second, files related to various datasources:
 
 "Automation" means:
 - *Complete* - no manual actions required
-- *Partial* - some manual action. Now that's only WakaTime, where I need to press "download dump" by myself
+- *Partial* - some manual action. Now that's only WakaTime, where I need to press "download dump" to trigger the process.
 - *Manual* - manually retrieve the required data and feed it to the app
