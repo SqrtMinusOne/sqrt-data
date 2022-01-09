@@ -509,10 +509,24 @@ if __name__ == '__main__':
     cli()
 #+end_src
 * Install
-There are multiple ways to install the project.
+Individual machines have to save the data to the logs folder and propagate new files to the server. Thus, the project has to be installed both on client machines and on the server.
 
-** Python
-To install the package with Python, run:
+For server installation, check [[*Server deployement][this section]]. For client machines, the installation options are as follows:
+- install as a [[*Python][Python package]]
+- install as a [[*Guix development setup][Guix package]] from the shipped definition
+- install as a Guix package from [[https://github.com/SqrtMinusOne/channel-q][my Guix channel]]
+
+I use the Python package for Android and Guix package for my desktop machines. For Android, also set the =ANDROID_PHONE= environment variable:
+#+begin_src bash
+export ANDROID_PHONE="orchid"
+#+end_src
+
+After installing the package:
+- copy =config.toml= to =~/.config/sqrt-data/config.toml=
+- run =sqrt_data cron run-client-cron=
+
+** Python setup
+To install the package, run:
 #+begin_src bash :eval no
 pip install .
 #+end_src
@@ -563,11 +577,11 @@ sqlitedict
 schedule
 furl
 #+end_src
-** Guix
+** Guix development setup
 This part is largely inspired by the Nyxt build setup.
 
 *** Usage
-To make an development environment, run:
+To make a development environment, run:
 #+begin_src bash :eval no
 guix shell --container -D -f sqrt-data.scm --share=$HOME/logs-sync
 #+end_src
@@ -579,6 +593,11 @@ guix shell --container -f sqrt-data.scm --share=$HOME/logs-sync
 #+end_src
 Now, just =sqrt_data= should work inside the environment.
 
+One issue with a container is that the app may not have access to stuff outside the container, like the MPD socket. If such access is necessary, remove the =--container= flag.
+#+begin_src bash :eval no
+guix shell -f sqrt-data.scm
+#+end_src
+
 *** Guix module
 Defining the module.
 #+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
@@ -589,19 +608,27 @@ Defining the module.
   #:use-module (ice-9 rdelim)
   #:use-module (ice-9 popen)
   #:use-module (guix download)
+  #:use-module (guix git-download)
   #:use-module (guix gexp)
   #:use-module (guix packages)
   #:use-module (guix build utils)
   #:use-module (guix build-system python)
+  #:use-module (guix build-system gnu)
   #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages compression)
   #:use-module (gnu packages databases)
+  #:use-module (gnu packages gawk)
   #:use-module (gnu packages gnome)
   #:use-module (gnu packages mpd)
+  #:use-module (gnu packages networking)
+  #:use-module (gnu packages rsync)
   #:use-module (gnu packages python-web)
   #:use-module (gnu packages python-xyz)
   #:use-module (gnu packages python-science)
+  #:use-module (gnu packages ssh)
   #:use-module (gnu packages version-control))
-
 #+end_src
 
 We want to build the package from the local source, so here is a way to figure out the source directory.
@@ -720,6 +747,64 @@ Inquirer.js")
     (license license:asl2.0)))
 #+end_src
 
+Also declaring osync here because I'm not sure how to include my channel.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define-public osync
+  (package
+    (name "osync")
+    (version "1.3-beta3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/deajan/osync/")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1zpxypgfj6sr87wq6s237fr2pxkncjb0w9hq14zfjppkvws66n0w"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f
+       #:validate-runpath? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-file-names
+           (lambda _
+             ;; Silence beta warining. Otherwise the exitcode is not zero
+             (substitute* "osync.sh" (("IS_STABLE=false") "IS_STABLE=true"))))
+         (delete 'bootstrap)
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (string-append (assoc-ref outputs "out"))))
+               ;; Use system* because installer returns exitcode 2 because it doesn't find systemd or initrc
+               (system* "./install.sh" (string-append "--prefix=" out) "--no-stats")
+               (mkdir (string-append out "/bin"))
+               (symlink (string-append out "/usr/local/bin/osync.sh")
+                        (string-append out "/bin/osync.sh"))
+               (symlink (string-append out "/usr/local/bin/osync-batch.sh")
+                        (string-append out "/bin/osync-batch.sh"))
+               (symlink (string-append out "/usr/local/bin/ssh-filter.sh")
+                        (string-append out "/bin/ssh-filter.sh"))
+               #t))))))
+    ;; TODO replace the executables with full paths
+    ;; XXX Can't put "iputils" in propagated-inputs because on Guix
+    ;; "ping" is in setuid-programs. Set "REMOTE_HOST_PING" to false if ping
+    ;; is not available.
+    (propagated-inputs
+     `(("rsync" ,rsync)
+       ("gawk" ,gawk)
+       ("coreutils" ,coreutils)
+       ("openssh" ,openssh)
+       ("gzip" ,gzip)
+       ("hostname" ,inetutils)))
+    (synopsis "A robust two way (bidirectional) file sync script based on rsync with fault tolerance, POSIX ACL support, time control and near realtime sync")
+    (home-page "http://www.netpower.fr/osync")
+    (license license:bsd-3)
+    (description "A two way filesync script running on bash Linux, BSD, Android, MacOSX, Cygwin, MSYS2, Win10 bash and virtually any system supporting bash). File synchronization is bidirectional, and can be run manually, as scheduled task, or triggered on file changes in daemon mode. It is a command line tool rsync wrapper with a lot of additional features baked in.")))
+#+end_src
+
 Finally, the definition of the package.
 #+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
 (define-public sqrt-data
@@ -735,11 +820,18 @@ Finally, the definition of the package.
        (modify-phases %standard-phases
          (add-before 'build 'fix-dependencies
            (lambda _
-             (substitute* "setup.py" (("psycopg2-binary") "psycopg2")))))))
+             (substitute* "setup.py" (("psycopg2-binary") "psycopg2"))
+             (substitute* "sqrt_data/service/sync.py"
+               (("EXEC_NOTIFY_SEND = (.*)")
+                (format #f "EXEC_NOTIFY_SEND = ~s\n" (which "notify-send"))))
+             (substitute* "sqrt_data/service/sync.py"
+               (("EXEC_OSYNC = (.*)")
+                (format #f "EXEC_OSYNC = ~s\n" (which "osync.sh")))))))))
     (native-inputs
      `(("git" ,git-minimal)))
     (inputs
-     `(("libnotify" ,libnotify)))
+     `(("libnotify" ,libnotify)
+       ("osync" ,osync)))
     (propagated-inputs
      `(("python-pandas" ,python-pandas)
        ("python-numpy" ,python-numpy)
@@ -761,16 +853,10 @@ Finally, the definition of the package.
     (license license:gpl3)))
 #+end_src
 
-Have to evaluate the variable with the definition for the =-f= flag.
+Also have to evaluate the variable with the definition for the =-f= flag.
 #+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
 sqrt-data
 #+end_src
-** Client side
-Individual machines have to save the data to the logs folder and propagate new files to the server.
-
-Don't forget to copy config.toml to ~/.config/sqrt-data/config.toml.
-
-Run =sqrt_data cron run-client-cron= in background.
 ** Server deployement
 *** Docker
 The server part uses Docker because I'm in love with Docker.
@@ -905,9 +991,3 @@ The server deployment is as follows.
      - Check if =config.toml= and the logs folder are mounted correctly
      - =sqrt_data hash-list= has to work
      - =sqrt_data mpd load-library= has to work
-* Notes
-** Android setup
-Add to =.bashrc=:
-#+begin_src bash
-export ANDROID_PHONE="orchid"
-#+end_src
