@@ -1,6 +1,7 @@
 #+TITLE: sqrt-data core
 #+PROPERTY: header-args:bash         :tangle-mode (identity #o755) :comments link :shebang "#!/usr/bin/env bash"
 #+PROPERTY: header-args:python :comments link :eval no
+#+PROPERTY: header-args:scheme :comments link :eval no
 #+PROPERTY: PRJ-DIR ..
 
 This file contains the core API of the project and things related to the deployement.
@@ -30,12 +31,15 @@ from dynaconf import Dynaconf
 
 __all__ = ['settings']
 
-settings = Dynaconf(
-    settings_files=[
-        'config.toml',
-        os.path.expanduser('~/.config/sqrt-data/config.toml')
-    ],
-)
+settings_files = [
+    'config.toml',
+    os.path.expanduser('~/.config/sqrt-data/config.toml')
+]
+
+if all([not os.path.exists(f) for f in settings_files]):
+    print('No config found!')
+
+settings = Dynaconf(settings_files=settings_files)
 #+end_src
 
 | Type | Note                                       |
@@ -504,8 +508,21 @@ from .manage import cli
 if __name__ == '__main__':
     cli()
 #+end_src
-** Misc
-*** setup.py and requirements
+* Install
+There are multiple ways to install the project.
+
+** Python
+To install the package with Python, run:
+#+begin_src bash :eval no
+pip install .
+#+end_src
+
+To install the dependencies, run:
+#+begin_src bash :eval no
+pip install -r requirements.txt
+#+end_src
+
+*** setup.py
 #+begin_src python :tangle (my/org-prj-dir "setup.py")
 from setuptools import find_packages, setup
 
@@ -520,7 +537,7 @@ setup(
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
         'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
-        'sqlitedict'
+        'sqlitedict', 'furl', 'schedule'
     ],
     entry_points='''
     [console_scripts]
@@ -528,6 +545,7 @@ setup(
     ''')
 #+end_src
 
+*** requireiments.txt
 #+begin_src text :tangle (my/org-prj-dir "requirements.txt")
 pandas
 numpy
@@ -545,17 +563,215 @@ sqlitedict
 schedule
 furl
 #+end_src
-* Deployement
+** Guix
+This part is largely inspired by the Nyxt build setup.
+
+*** Usage
+To make an development environment, run:
+#+begin_src bash :eval no
+guix shell --container -D -f sqrt-data.scm --share=$HOME/logs-sync
+#+end_src
+This will create the environment with all the dependencies, but not the =sqrt_data= package itself. =python -m sqrt_data= inside the environment should work.
+
+To create an environment with the package, remove the =-D= flag:
+#+begin_src bash :eval no
+guix shell --container -f sqrt-data.scm --share=$HOME/logs-sync
+#+end_src
+Now, just =sqrt_data= should work inside the environment.
+
+*** Guix module
+Defining the module.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define-module (sqrt-data)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
+  #:use-module (ice-9 match)
+  #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 popen)
+  #:use-module (guix download)
+  #:use-module (guix gexp)
+  #:use-module (guix packages)
+  #:use-module (guix build utils)
+  #:use-module (guix build-system python)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu packages databases)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages mpd)
+  #:use-module (gnu packages python-web)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages python-science)
+  #:use-module (gnu packages version-control))
+
+#+end_src
+
+We want to build the package from the local source, so here is a way to figure out the source directory.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define %source-dir (dirname (current-filename)))
+;; (define %source-dir "/home/pavel/Code/self-quantification/sqrt-data/")
+#+end_src
+
+Filter the list of files by =git ls-files=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define git-file?
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "ls-files")))
+         (files (let loop ((lines '()))
+                  (match (read-line pipe)
+                    ((? eof-object?)
+                     (reverse lines))
+                    (line
+                     (loop (cons line lines))))))
+         (status (close-pipe pipe)))
+    (lambda (file stat)
+      (match (stat:type stat)
+        ('directory
+         #t)
+        ((or 'regular 'symlink)
+         (any (cut string-suffix? <> file) files))
+        (_
+         #f)))))
+#+end_src
+
+Get the version of the package with =git describe --always --tags=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define (git-version)
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "describe" "--always" "--tags")))
+         (version (read-line pipe)))
+    (close-pipe pipe)
+    version))
+#+end_src
+
+Guix doesn't seem to have all the required dependencies, so here are ones that are missing from the official repository.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define-public python-readchar
+  (package
+    (name "python-readchar")
+    (version "3.0.5")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "readchar" version))
+       (sha256
+        (base32 "1h42qjj9079yv19rd1zdl3wg915bg2wrvfjzd4xpyyy3k0gbgxfi"))))
+    (arguments
+     `(#:tests? #f))
+    (build-system python-build-system)
+    (propagated-inputs (list python-flake8))
+    (home-page "https://github.com/magmax/python-readchar")
+    (synopsis "Utilities to read single characters and key-strokes")
+    (description "Utilities to read single characters and key-strokes")
+    (license license:expat)))
+
+(define-public python-blessed-1.19
+  (package
+    (inherit python-blessed)
+    (version "1.19.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "blessed" version))
+       (sha256
+        (base32 "0qbsmnjwj016a0zg0jx9nnbfkzr700jlms18nlqa7bk1ax7gkc2d"))
+       (modules '((guix build utils)))
+       (snippet
+        '(begin
+           ;; Don't get hung up on Windows test failures.
+           (delete-file "blessed/win_terminal.py") #t))))))
+
+(define-public python-inquirer
+  (package
+    (name "python-inquirer")
+    (version "2.9.1")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "inquirer" version))
+       (sha256
+        (base32 "0pdzkm52dz9fy67qpgivq99hfw5j5f3ry73pcpndgaxwm3maiw35"))))
+    (build-system python-build-system)
+    (propagated-inputs (list python-blessed-1.19 python-editor python-readchar))
+    (arguments
+     `(#:tests? #f))
+    (home-page "https://github.com/magmax/python-inquirer")
+    (synopsis
+     "Collection of common interactive command line user interfaces, based on Inquirer.js")
+    (description
+     "Collection of common interactive command line user interfaces, based on
+Inquirer.js")
+    (license license:expat)))
+
+(define-public python-sqlitedict
+  (package
+    (name "python-sqlitedict")
+    (version "1.7.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "sqlitedict" version))
+       (sha256
+        (base32 "0mmdph6yrlynyyc88hdg0m12k4p3ppn029k925sxmm5c38qcrzra"))))
+    (build-system python-build-system)
+    (home-page "https://github.com/piskvorky/sqlitedict")
+    (synopsis
+     "Persistent dict in Python, backed up by sqlite3 and pickle, multithread-safe.")
+    (description
+     "Persistent dict in Python, backed up by sqlite3 and pickle, multithread-safe.")
+    (license license:asl2.0)))
+#+end_src
+
+Finally, the definition of the package.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+(define-public sqrt-data
+  (package
+    (name "sqrt-data")
+    (version (git-version))
+    (source
+     (local-file %source-dir #:recursive? #t #:select? git-file?))
+    (build-system python-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'fix-dependencies
+           (lambda _
+             (substitute* "setup.py" (("psycopg2-binary") "psycopg2")))))))
+    (native-inputs
+     `(("git" ,git-minimal)))
+    (inputs
+     `(("libnotify" ,libnotify)))
+    (propagated-inputs
+     `(("python-pandas" ,python-pandas)
+       ("python-numpy" ,python-numpy)
+       ("python-click" ,python-click)
+       ("python-inquirer", python-inquirer)
+       ("python-mpd2" ,python-mpd2)
+       ("python-sqlalchemy" ,python-sqlalchemy)
+       ("python-psycopg2" ,python-psycopg2)
+       ("python-requests" ,python-requests)
+       ("python-tqdm" ,python-tqdm)
+       ("python-beautifulsoup4" ,python-beautifulsoup4)
+       ("python-furl" ,python-furl)
+       ("python-sqlitedict" ,python-sqlitedict)
+       ("python-schedule" ,python-schedule)
+       ("dynaconf" ,dynaconf)))
+    (synopsis "My self-quantification scripts")
+    (description "My self-quantification scripts")
+    (home-page "https://github.com/SqrtMinusOne/sqrt-data")
+    (license license:gpl3)))
+#+end_src
+
+Have to evaluate the variable with the definition for the =-f= flag.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data.scm")
+sqrt-data
+#+end_src
 ** Client side
 Individual machines have to save the data to the logs folder and propagate new files to the server.
-
-As of now, until I made the repository public so I could write a Guix package or something, I just install the package in a conda environment.
 
 Don't forget to copy config.toml to ~/.config/sqrt-data/config.toml.
 
 Run =sqrt_data cron run-client-cron= in background.
-
-** Server side
+** Server deployement
 *** Docker
 The server part uses Docker because I'm in love with Docker.
 

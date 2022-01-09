@@ -1,4 +1,4 @@
-# [[file:org/core.org::*setup.py and requirements][setup.py and requirements:1]]
+# [[file:org/core.org::*setup.py][setup.py:1]]
 from setuptools import find_packages, setup
 
 setup(
@@ -12,10 +12,10 @@ setup(
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
         'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
-        'sqlitedict'
+        'sqlitedict', 'furl', 'schedule'
     ],
     entry_points='''
     [console_scripts]
     sqrt_data=sqrt_data.manage:cli
     ''')
-# setup.py and requirements:1 ends here
+# setup.py:1 ends here
