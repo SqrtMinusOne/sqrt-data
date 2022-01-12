@@ -13,3 +13,4 @@ dynaconf
 sqlitedict
 schedule
 furl
+tldextract

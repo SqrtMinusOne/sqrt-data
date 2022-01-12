@@ -12,7 +12,7 @@ setup(
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
         'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
-        'sqlitedict', 'furl', 'schedule'
+        'sqlitedict', 'furl', 'schedule', 'tldextract'
     ],
     entry_points='''
     [console_scripts]

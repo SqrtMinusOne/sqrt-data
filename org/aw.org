@@ -272,6 +272,7 @@ def save_buckets(force=False):
 The required imports:
 #+begin_src python
 import furl
+import tldextract
 import glob
 import pandas as pd
 import os
@@ -342,9 +343,7 @@ def get_records(type_, df):
     if type_ == 'web_tab_current':
         df = df.rename({'tabCount': 'tab_count'}, axis=1)
         df['site'] = [
-            furl.furl(url).remove(
-                args=True, fragment=True, fragment_path=True, path=True
-            ).url
+            tldextract.extract(url).registered_domain
             for url in df['url']
         ]
         df['url_no_params'] = [

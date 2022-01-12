@@ -551,7 +551,7 @@ setup(
     install_requires=[
         'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
         'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
-        'sqlitedict', 'furl', 'schedule'
+        'sqlitedict', 'furl', 'schedule', 'tldextract'
     ],
     entry_points='''
     [console_scripts]
@@ -576,6 +576,7 @@ dynaconf
 sqlitedict
 schedule
 furl
+tldextract
 #+end_src
 ** Guix development setup
 This part is largely inspired by the Nyxt build setup.
@@ -846,6 +847,7 @@ Finally, the definition of the package.
        ("python-furl" ,python-furl)
        ("python-sqlitedict" ,python-sqlitedict)
        ("python-schedule" ,python-schedule)
+       ("python-tldextract" ,python-tldextract)
        ("dynaconf" ,dynaconf)))
     (synopsis "My self-quantification scripts")
     (description "My self-quantification scripts")
