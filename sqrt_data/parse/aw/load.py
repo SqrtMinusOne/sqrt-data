@@ -26,6 +26,7 @@ def get_dataframes(h):
         f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
     )
     dfs_by_type = {}
+    files_by_type = {}
     for f in files:
         if not h.is_updated(f):
             continue
@@ -37,9 +38,15 @@ def get_dataframes(h):
         type_ = re.search(r'^\w+', os.path.basename(f)).group(0)
         try:
             dfs_by_type[type_].append(df)
+            files_by_type[type_].append(f)
         except KeyError:
             dfs_by_type[type_] = [df]
+            files_by_type[type_] = [f]
         h.save_hash(f)
+    for type, files in files_by_type.items():
+        print(f'Type: {type}')
+        print('Files')
+        print("\n".join(files))
     return dfs_by_type
 # Loading:3 ends here
 
