@@ -31,11 +31,18 @@ def aw_task():
     subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
 
 
+def archive_task():
+    p = subprocess.run(['sqrt_data', 'service', 'compress'])
+    if p.returncode != 0:
+        return
+
+
 def run_server_cron():
     schedule.every().day.at('00:00').do(waka_task)
     schedule.every().day.at('01:00').do(mpd_task)
     schedule.every().day.at('02:00').do(sleep_task)
     schedule.every().day.at('03:00').do(aw_task)
+    schedule.every().day.at('04:00').do(archive_task)
 
     while True:
         schedule.run_pending()
