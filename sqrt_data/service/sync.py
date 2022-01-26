@@ -53,6 +53,7 @@ def sync_logs(force=False):
             f'--target={settings.sync.target}'
         ],
         env={
+            **os.environ,
             'RSYNC_EXCLUDE_PATTERN': 'sync.log',
             'CREATE_DIRS': 'yes',
             'REMOTE_HOST_PING': 'false',
