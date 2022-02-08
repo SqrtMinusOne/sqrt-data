@@ -15,7 +15,7 @@ def client_task():
 
 
 def run_client_cron():
-    schedule.every().hour.do(client_task)
+    schedule.every().hour.at(":00").do(client_task)
     while True:
         schedule.run_pending()
         time.sleep(1)

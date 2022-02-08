@@ -58,6 +58,7 @@ port = 5432
 root = '@format {env[HOME]}/logs-sync'
 hash_db = '@format {this.general.root}/hash.db'
 temp_data_folder = '/tmp/sqrt-data'
+cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
 
 [sync]
 log_file = '@format {this.general.root}/sync.log'
@@ -345,11 +346,18 @@ def aw_task():
     subprocess.run(['sqrt_data', 'aw', 'postprocessing-dispatch'])
 
 
+def archive_task():
+    p = subprocess.run(['sqrt_data', 'service', 'compress'])
+    if p.returncode != 0:
+        return
+
+
 def run_server_cron():
     schedule.every().day.at('00:00').do(waka_task)
     schedule.every().day.at('01:00').do(mpd_task)
     schedule.every().day.at('02:00').do(sleep_task)
     schedule.every().day.at('03:00').do(aw_task)
+    schedule.every().day.at('04:00').do(archive_task)
 
     while True:
         schedule.run_pending()
@@ -377,7 +385,7 @@ def client_task():
 
 
 def run_client_cron():
-    schedule.every().hour.do(client_task)
+    schedule.every().hour.at(":00").do(client_task)
     while True:
         schedule.run_pending()
         time.sleep(1)
@@ -403,13 +411,19 @@ from sqrt_data import tasks
 
 A simple logging setup.
 #+begin_src python
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[logging.FileHandler('./cli.log'),
-              logging.StreamHandler()]
-)
+if 'general' in settings:
+    if not os.path.exists(os.path.dirname(settings.general.cli_log)):
+        os.mkdir(os.path.dirname(settings.general.cli_log))
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[logging.FileHandler(settings.general.cli_log),
+                  logging.StreamHandler()]
+    )
+else:
+    print("Cannot initialize logging without config")
 #+end_src
 
 Initialize a click group.

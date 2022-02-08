@@ -11,13 +11,19 @@ from sqrt_data import tasks
 # CLI entrypoint:1 ends here
 
 # [[file:../org/core.org::*CLI entrypoint][CLI entrypoint:2]]
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[logging.FileHandler('./cli.log'),
-              logging.StreamHandler()]
-)
+if 'general' in settings:
+    if not os.path.exists(os.path.dirname(settings.general.cli_log)):
+        os.mkdir(os.path.dirname(settings.general.cli_log))
+
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[logging.FileHandler(settings.general.cli_log),
+                  logging.StreamHandler()]
+    )
+else:
+    print("Cannot initialize logging without config")
 # CLI entrypoint:2 ends here
 
 # [[file:../org/core.org::*CLI entrypoint][CLI entrypoint:3]]
