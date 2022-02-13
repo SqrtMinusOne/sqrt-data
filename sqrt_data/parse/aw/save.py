@@ -1,4 +1,4 @@
-# [[file:../../../org/aw.org::*Saving][Saving:1]]
+# [[file:../../../org/aw.org::*Saving (Desktop)][Saving (Desktop):1]]
 import socket
 import json
 import logging
@@ -11,13 +11,13 @@ import requests
 import furl
 
 from sqrt_data.api import settings, get_hostname
-# Saving:1 ends here
+# Saving (Desktop):1 ends here
 
-# [[file:../../../org/aw.org::*Saving][Saving:2]]
+# [[file:../../../org/aw.org::*Saving (Desktop)][Saving (Desktop):2]]
 __all__ = ['save_buckets']
-# Saving:2 ends here
+# Saving (Desktop):2 ends here
 
-# [[file:../../../org/aw.org::*Saving][Saving:3]]
+# [[file:../../../org/aw.org::*Saving (Desktop)][Saving (Desktop):3]]
 def get_last_updated():
     data = {}
     if os.path.exists(os.path.expanduser(settings['aw']['last_updated'])):
@@ -35,9 +35,9 @@ def save_last_updated(data):
     data[f'last_updated-{get_hostname()}'] = datetime.now().isoformat()
     with open(os.path.expanduser(settings['aw']['last_updated']), 'w') as f:
         json.dump(data, f)
-# Saving:3 ends here
+# Saving (Desktop):3 ends here
 
-# [[file:../../../org/aw.org::*Saving][Saving:4]]
+# [[file:../../../org/aw.org::*Saving (Desktop)][Saving (Desktop):4]]
 def get_data(bucket_id, last_updated=None):
     params = {}
     api = settings['aw']['api']
@@ -66,9 +66,9 @@ def get_data(bucket_id, last_updated=None):
         df = df.set_index('id')
         return df
     return None
-# Saving:4 ends here
+# Saving (Desktop):4 ends here
 
-# [[file:../../../org/aw.org::*Saving][Saving:5]]
+# [[file:../../../org/aw.org::*Saving (Desktop)][Saving (Desktop):5]]
 def save_buckets(force=False):
     last_updated = get_last_updated()
     last_updated_time = last_updated.get(f'last_updated-{get_hostname()}', None)
@@ -109,4 +109,4 @@ def save_buckets(force=False):
         df.to_csv(filename)
         logging.info('Saved %s with %s events', filename, len(df))
     save_last_updated(last_updated)
-# Saving:5 ends here
+# Saving (Desktop):5 ends here

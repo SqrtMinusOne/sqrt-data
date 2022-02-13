@@ -1,4 +1,4 @@
-# [[file:../../../org/aw.org::*Loading][Loading:1]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):1]]
 import furl
 import tldextract
 import glob
@@ -14,13 +14,13 @@ from sqrt_data.api import settings, DBConn, HashDict
 from sqrt_data.models import Base
 from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
 from sqrt_data.parse.locations import LocationMatcher
-# Loading:1 ends here
+# Loading (Dekstop):1 ends here
 
-# [[file:../../../org/aw.org::*Loading][Loading:2]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):2]]
 __all__ = ['load']
-# Loading:2 ends here
+# Loading (Dekstop):2 ends here
 
-# [[file:../../../org/aw.org::*Loading][Loading:3]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):3]]
 def get_dataframes(h):
     files = glob.glob(
         f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
@@ -48,18 +48,18 @@ def get_dataframes(h):
         print('Files')
         print("\n".join(files))
     return dfs_by_type
-# Loading:3 ends here
+# Loading (Dekstop):3 ends here
 
-# [[file:../../../org/aw.org::*Loading][Loading:4]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):4]]
 MODELS = {
     'afkstatus': AfkStatus,
     'currentwindow': CurrentWindow,
     'app_editor_activity': AppEditor,
     'web_tab_current': WebTab
 }
-# Loading:4 ends here
+# Loading (Dekstop):4 ends here
 
-# [[file:../../../org/aw.org::*Loading][Loading:5]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):5]]
 def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
@@ -88,9 +88,9 @@ def get_records(type_, df):
     df['location'] = [l[0] for l in locations]
     df['timestamp'] = [l[1] for l in locations]
     return df.to_dict(orient='records')
-# Loading:5 ends here
+# Loading (Dekstop):5 ends here
 
-# [[file:../../../org/aw.org::*Loading][Loading:6]]
+# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):6]]
 def load():
     DBConn()
     DBConn.create_schema('aw', Base)
@@ -104,4 +104,4 @@ def load():
                     db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
             db.commit()
         h.commit()
-# Loading:6 ends here
+# Loading (Dekstop):6 ends here

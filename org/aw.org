@@ -19,7 +19,7 @@ One event has the following attributes:
 - =duration= - duration in seconds
 - =data= - a dictionary with details about the event.
 
-As of now, there are 4 default event types with the following structure of the =data= fields, which are quite self-descriptive:
+As of now, there are 4 default desktop event types with the following structure of the =data= fields, which are quite self-descriptive:
 - =afkstatus=
   - =status= - "afk" or "not-afk"
 - =currentwindow=
@@ -35,6 +35,12 @@ As of now, there are 4 default event types with the following structure of the =
   - =audible=
   - =incognito=
   - =tabCount=
+And 2 event types on Android:
+- =os.lockscreen.unlocks= - no data
+- =currentwindow=
+  - =app=
+  - =classname=
+  - =package=
 
 I also add a =location= field.
 
@@ -64,6 +70,7 @@ class Bucket(Base):
 #+end_src
 
 And here are the models for particular bucket types:
+
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/afkstatus.py")
 import sqlalchemy as sa
 from .bucket import Bucket
@@ -125,6 +132,32 @@ class WebTab(Bucket):
     tab_count = sa.Column(sa.Integer(), nullable=True)
 #+end_src
 
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/android_unlock.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['AndroidUnlock']
+
+class AndroidUnlock(Bucket):
+    __tablename__ = 'android_unlock'
+    __table_args__ = {'schema': 'aw'}
+#+end_src
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/android_currentwindow.py")
+import sqlalchemy as sa
+from .bucket import Bucket
+
+__all__ = ['AndroidCurrentWindow']
+
+class AndroidCurrentWindow(Bucket):
+    __tablename__ = 'android_currentwindow'
+    __table_args__ = {'schema': 'aw'}
+
+    app = sa.Column(sa.Text(), nullable=False)
+    classname = sa.Column(sa.Text(), nullable=False)
+    package = sa.Column(sa.Text(), nullable=False)
+#+end_src
+
 The corresponding =__init__.py=:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/__init__.py")
 from .bucket import *
@@ -132,6 +165,8 @@ from .afkstatus import *
 from .currentwindow import *
 from .appeditor import *
 from .webtab import *
+from .android_unlock import *
+from .android_currentwindow import *
 #+end_src
 * Data
 The corresponding =__init__.py=:
@@ -139,9 +174,10 @@ The corresponding =__init__.py=:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/aw/__init__.py") :comments link
 from .save import *
 from .load import *
+from .load_android import *
 from .postprocess import *
 #+end_src
-** Saving
+** Saving (Desktop)
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/save.py") :comments link
 :END:
@@ -265,7 +301,9 @@ def save_buckets(force=False):
         logging.info('Saved %s with %s events', filename, len(df))
     save_last_updated(last_updated)
 #+end_src
-** Loading
+** Saving (Android)
+I tried to launch desktop scripts on termux, but had issues with compiling numpy. In the end, I decided that it will be easier to manually save files from the mobile ActivityWatch and sync them with [[https://play.google.com/store/apps/details?id=dk.tacit.android.foldersync.lite&hl=en&gl=US][FolderSync]].
+** Loading (Dekstop)
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/load.py") :comments link
 :END:
@@ -383,6 +421,96 @@ def load():
                     entries = get_records(type_, df)
                     db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
             db.commit()
+        h.commit()
+#+end_src
+** Loading (Android)
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/load_android.py") :comments link
+:END:
+As long as I have only one Android phone where I have ActivityWatch installed, I work with just one JSON file.
+
+The required imports:
+#+begin_src python
+import json
+import pandas as pd
+
+from tqdm import tqdm
+
+from sqrt_data.api import settings, DBConn, HashDict
+from sqrt_data.models import Base
+from sqrt_data.parse.locations import LocationMatcher
+#+end_src
+
+The only exported function is the one that performs the loading:
+#+begin_src python
+__all__ = ['load_android']
+#+end_src
+
+A function to get dataframes from the JSON file:
+#+begin_src python
+def get_dataframes(h):
+    if not h.is_updated(settings["aw"]["android_file"]):
+        print('Android already loaded')
+        return
+    dfs_by_type = {}
+    with open(settings["aw"]["android_file"], 'r') as f:
+        data = json.load(f)
+        buckets = data['buckets']
+        for bucket in buckets.values():
+            df = pd.DataFrame(
+                [
+                    {
+                        'id': f"{bucket['id']}-{event['id']}",
+                        'bucket_id': bucket['id'],
+                        'hostname': bucket['hostname'],
+                        'duration': event['duration'],
+                        'timestamp': pd.Timestamp(event['timestamp']),
+                        ,**event['data'],
+                    } for event in bucket['events']
+                ]
+            )
+            df = df.set_index('id')
+            dfs_by_type[bucket['type']] = df
+    return dfs_by_type
+#+end_src
+
+Also pre-processing the records.
+#+begin_src python
+def get_records(type_, df):
+    loc = LocationMatcher()
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    locations = df.apply(
+        lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
+    )
+    df['location'] = [l[0] for l in locations]
+    df['timestamp'] = [l[1] for l in locations]
+    return df
+#+end_src
+
+And a function to put everything to the database:
+#+begin_src python
+TABLE_NAMES = {
+    'os.lockscreen.unlocks': 'android_unlock',
+    'currentwindow': 'android_currentwindow'
+}
+
+def load_android():
+    DBConn()
+    DBConn.create_schema('aw', Base)
+
+    with HashDict() as h:
+        dfs_by_type = get_dataframes(h)
+
+        for type_, df in tqdm(dfs_by_type.items()):
+            df = get_records(type_, df)
+            df.to_sql(
+                TABLE_NAMES[type_],
+                schema=settings['aw']['schema'],
+                con=DBConn.engine,
+                if_exists='replace'
+            )
+            print(df)
+        h.save_hash(settings["aw"]["android_file"])
         h.commit()
 #+end_src
 ** Postprocessing
@@ -665,6 +793,10 @@ def save_buckets(force):
 @aw.command(help='Load ActivityWatch buckets')
 def load():
     aw_.load()
+
+@aw.command(help='Load ActivityWatch Android buckets')
+def load_android():
+    aw_.load_android()
 #+end_src
 
 Posprocessing commands:

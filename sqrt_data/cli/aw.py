@@ -20,6 +20,10 @@ def save_buckets(force):
 @aw.command(help='Load ActivityWatch buckets')
 def load():
     aw_.load()
+
+@aw.command(help='Load ActivityWatch Android buckets')
+def load_android():
+    aw_.load_android()
 # CLI:3 ends here
 
 # [[file:../../org/aw.org::*CLI][CLI:4]]
