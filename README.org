@@ -13,9 +13,9 @@ The basic principles are:
 - The tools have to be able to give away the data in machine-readable formats.
 - Wherever possible, I want to own my data.
 
-It's unlikely that you'll be to run the project as it is, as it's tuned pretty closely to my particular workflows and needs (hence the badge). Nevertheless, you may find something useful here.
+It's unlikely that you'll be able to run the project as it is, as it's tuned to my particular workflows and needs (hence the badge). Nevertheless, you may find something useful here.
 
-The project is written with [[https://en.wikipedia.org/wiki/Literate_programming][literate programming]] paradigm with Emacs' [[https://orgmode.org/worg/org-contrib/babel/intro.html][Org Mode]] as a backend. This file contains basic information and common logic, necessary for the individual components.
+The project is written with [[https://en.wikipedia.org/wiki/Literate_programming][literate programming]] paradigm with Emacs' [[https://orgmode.org/worg/org-contrib/babel/intro.html][Org Mode]] as an engine.
 
 * Idea
 The main idea is as follows:
@@ -36,15 +36,16 @@ First, some files that aren't related to any particular data source:
 Second, files related to various datasources:
 | File               | Data source                                            | Automation |
 |--------------------+--------------------------------------------------------+------------|
-| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]]                                          | Complete   |
+| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]] (Desktop)                                | Complete   |
 | [[file:org/mpd.org][mpd.org]]            | [[https://www.musicpd.org/][Music Player Daemon]] (or my [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]], to be precise) | Complete   |
 | [[file:org/locations.org][locations.org]]      | My CSV with location history                           | Complete   |
 | [[file:org/wakatime.org][wakatime.org]]       | [[https://wakatime.org][WakaTime]].                                              | Partial    |
+| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]] (Android)                                | Partial    |
 | [[file:org/sleep.org][sleep.org]]          | [[https://sleep.urbandroid.org/][Sleep As Android]]                                       | Manual     |
 | [[file:org/google-android.org][google-android.org]] | [[https://takeout.google.com/][Google Takeout]], Android activity                       | Manual     |
 | [[file:org/vk.org][vk.org]]             | [[https://vk.com][VK]], GDPR dump                                          | Manual     |
 
 "Automation" means:
 - *Complete* - no manual actions required
-- *Partial* - some manual action. Now that's only WakaTime, where I need to press "download dump" to trigger the process.
+- *Partial* - some manual action required
 - *Manual* - manually retrieve the required data and feed it to the app
