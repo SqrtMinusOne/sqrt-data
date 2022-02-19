@@ -1,0 +1,216 @@
+#+TITLE: YouTube
+#+PROPERTY: PRJ-DIR ..
+
+Aggregating my YouTube history.
+
+* Sources
+** MPV
+I often use [[https://mpv.io/][MPV]] with [[https://github.com/yt-dlp/yt-dlp][yt-dlp]] to watch stuff from YouTube.
+
+To record that, here is a script that logs my MPV activity. Put that into =~/.config/mpv/scripts=.
+
+#+begin_src lua :tangle (my/org-prj-dir "scripts/mpv-history.lua")
+local utils = require 'mp.utils'
+local config_folder = '/logs-sync/mpv';
+local log = os.getenv('HOME')..config_folder..'/'..os.date('%Y-%m-%d')..'.log';
+
+local path;
+
+mp.register_event('file-loaded', function ()
+      local logfile = io.open(log, 'a+');
+      path = mp.get_property('path');
+      local data = {
+         ['kind'] = 'loaded',
+         ['time'] = os.date('!%Y-%m-%dT%TZ'),
+         ['path'] = path,
+         ['filename'] = mp.get_property('filename'),
+         ['length'] = mp.get_property('duration'),
+      };
+      logfile:write(utils.format_json(data)..'\n');
+      logfile:close();
+end)
+
+mp.observe_property('pause', 'bool', function (name, value)
+      if (not path) then
+         return;
+      end
+      local data = {
+         ['kind'] = value and 'pause' or 'play',
+         ['time'] = os.date('!%Y-%m-%dT%TZ'),
+         ['path'] = path,
+         ['pos'] = mp.get_property('time-pos'),
+      }
+      local logfile = io.open(log, 'a+');
+      logfile:write(utils.format_json(data)..'\n');
+      logfile:close();
+end)
+
+mp.register_event('seek', function ()
+      if (mp.get_property_bool('pause')) then
+         return;
+      end
+      local data = {
+         ['kind'] = 'seek',
+         ['time'] = os.date('!%Y-%m-%dT%TZ'),
+         ['path'] = path,
+         ['pos'] = mp.get_property('time-pos'),
+      }
+      local logfile = io.open(log, 'a+');
+      logfile:write(utils.format_json(data)..'\n');
+      logfile:close();
+end)
+
+mp.register_event('end-file', function (data)
+      local kind;
+      if (data['reason'] == 'eof') then
+         kind = 'end';
+      elseif (data['reason'] == 'quit' or data['reason'] == 'stop') then
+         kind = 'stop';
+      end;
+      local data = {
+         ['kind'] = kind,
+         ['time'] = os.date('!%Y-%m-%dT%TZ'),
+         ['path'] = path,
+         ['pos'] = mp.get_property('time-pos'),
+      }
+      local logfile = io.open(log, 'a+');
+      logfile:write(utils.format_json(data)..'\n');
+      logfile:close();
+end)
+#+end_src
+** YouTube website history
+:PROPERTIES:
+:header-args:js: :tangle (my/org-prj-dir "scripts/youtube-history.js") :comments link
+:END:
+
+Apparently that's the only way to get YouTube history with watched time per video.
+
+Parsing the date string of the following form:
+- Today
+- Yesterday
+- Tuesday
+- Feb 7
+- Feb 7, 2020
+#+begin_src js
+const DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+function parseDayString(day) {
+  const today = new Date();
+  today.setUTCHours(0);
+  today.setUTCMinutes(0);
+  today.setUTCSeconds(0);
+  today.setUTCMilliseconds(0);
+  if (day === "Today") {
+    return today.toJSON();
+  }
+  if (day === "Yesterday") {
+    today.setUTCDate(today.getUTCDate() - 1);
+    return today.toJSON();
+  }
+  if (DAYS.includes(day)) {
+    const now = today.getDay() - 1 + 7;
+    const then = DAYS.indexOf(day) + 7;
+    today.setUTCDate(today.getUTCDate() - (now - then));
+    return today.toJSON();
+  }
+  return 0;
+}
+#+end_src
+
+Asyncronous sleep
+#+begin_src js
+const sleep = (m) => new Promise((r) => setTimeout(r, m));
+#+end_src
+
+Parsing one =<ytd-video-renderer>=
+#+begin_src js
+async function parseVideo(video) {
+  if (!video.querySelector('#progress')) {
+    await sleep(1000);
+    return parseVideo(video);
+  }
+  const progress = parseInt(video.querySelector("#progress").style.width);
+  const link = video.querySelector("#thumbnail").href;
+  const id = new URL(link).searchParams.get("v");
+  const channel = video.querySelector('[aria-label="Go to channel"]').href;
+  return { progress, id, channel };
+}
+#+end_src
+
+Parsing one =<ytd-video-section-renderer>=
+#+begin_src js
+async function parseDaySection(section) {
+  const date = section.querySelector("#title").textContent;
+  const videos = Array.from(section.querySelectorAll("ytd-video-renderer"));
+  const result = [];
+  for (const video of videos) {
+    const datum = await parseVideo(video);
+    result.push({ ...datum, date: parseDayString(date) })
+  }
+  return result;
+}
+#+end_src
+
+Parsing everything.
+#+begin_src js
+async function parseAll() {
+  const root = document
+    .querySelector("ytd-section-list-renderer")
+    .querySelector("#contents");
+  const res = [];
+  let wait = 0;
+  let index = 0;
+  while (true) {
+    const children = Array.from(root.childNodes)
+      .filter((n) => n.tagName !== "YTD-CONTINUATION-ITEM-RENDERER")
+      .slice(index);
+    if (children.length === 0) {
+      window.scrollTo(0, 1000000000);
+      await sleep(1000);
+      if (wait < 10) {
+        wait++;
+        continue;
+      } else {
+        break;
+      }
+    } else {
+      wait = 0;
+    }
+    const child = children[0];
+    child.scrollIntoView();
+    res.push(...(await parseDaySection(child)));
+    index++;
+  }
+  return res;
+}
+#+end_src
+
+To run:
+#+begin_src js :tangle no
+const res = await parseAll()
+#+end_src
+
+And save "res".
