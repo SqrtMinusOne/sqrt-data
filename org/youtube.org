@@ -136,6 +136,14 @@ function parseDayString(day) {
     today.setUTCDate(today.getUTCDate() - (now - then));
     return today.toJSON();
   }
+  if (day.includes(',')) {
+    const year = parseInt(day.split(',')[1]);
+    today.setUTCFullYear(year)
+    day = day.split(',')[0];
+  }
+  const parts = day.split(' ');
+  today.setUTCMonth(MONTHS.indexOf(parts[0]))
+  today.setUTCDate(parseInt(parts[1]))
   return 0;
 }
 #+end_src
@@ -190,7 +198,7 @@ async function parseAll() {
     if (children.length === 0) {
       window.scrollTo(0, 1000000000);
       await sleep(1000);
-      if (wait < 10) {
+      if (wait < 20) {
         wait++;
         continue;
       } else {
