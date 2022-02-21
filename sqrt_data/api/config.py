@@ -6,8 +6,8 @@ from dynaconf import Dynaconf
 __all__ = ['settings']
 
 settings_files = [
-    'config.toml',
-    os.path.expanduser('~/.config/sqrt-data/config.toml')
+    # os.path.expanduser('~/.config/sqrt-data/config.toml'),
+    'config.toml'
 ]
 
 if all([not os.path.exists(f) for f in settings_files]):

@@ -7,4 +7,5 @@ from .mpd import *
 from .aw import *
 from .locations import *
 from .service import *
+from .youtube import *
 # CLI entrypoint:5 ends here

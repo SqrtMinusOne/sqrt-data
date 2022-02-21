@@ -42,6 +42,7 @@ cli.add_command(cli_modules.mpd)
 cli.add_command(cli_modules.aw)
 cli.add_command(cli_modules.locations)
 cli.add_command(cli_modules.service)
+cli.add_command(cli_modules.youtube)
 # CLI entrypoint:4 ends here
 
 # [[file:../org/core.org::*CLI entrypoint][CLI entrypoint:6]]

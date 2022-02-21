@@ -32,8 +32,8 @@ from dynaconf import Dynaconf
 __all__ = ['settings']
 
 settings_files = [
-    'config.toml',
-    os.path.expanduser('~/.config/sqrt-data/config.toml')
+    # os.path.expanduser('~/.config/sqrt-data/config.toml'),
+    'config.toml'
 ]
 
 if all([not os.path.exists(f) for f in settings_files]):
@@ -445,6 +445,7 @@ cli.add_command(cli_modules.mpd)
 cli.add_command(cli_modules.aw)
 cli.add_command(cli_modules.locations)
 cli.add_command(cli_modules.service)
+cli.add_command(cli_modules.youtube)
 #+end_src
 
 The corresponding =__init__.py= in the CLI module:
@@ -457,6 +458,7 @@ from .mpd import *
 from .aw import *
 from .locations import *
 from .service import *
+from .youtube import *
 #+end_src
 
 Two simple commands to work with file hashes.

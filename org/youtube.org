@@ -1,4 +1,5 @@
 #+TITLE: YouTube
+#+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
 Aggregating my YouTube history.
@@ -222,3 +223,301 @@ const res = await parseAll()
 #+end_src
 
 And save "res".
+* Data model
+The data model is something like this:
+- One channel has multiple videos
+- One video has multiple views of different kinds
+- One video belongs to one category
+
+The =__init__.py= file:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/__init__.py")
+from .channel import *
+from .video import *
+from .watch import *
+from .category import *
+#+end_src
+
+And models:
+** Category
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/category.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['Category']
+
+
+class Category(Base):
+    __table_args__ = {'schema': 'youtube'}
+    __tablename__ = 'category'
+
+    id = sa.Column(sa.Integer(), primary_key=True)
+    name = sa.Column(sa.Text(), nullable=False)
+#+end_src
+** Channel
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/channel.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['Channel']
+
+
+class Channel(Base):
+    __table_args__ = {'schema': 'youtube'}
+    __tablename__ = 'channel'
+
+    id = sa.Column(
+        sa.String(256),
+        primary_key=True,
+    )
+    name = sa.Column(sa.Text(), nullable=False)
+    url = sa.Column(sa.Text(), nullable=False)
+    description = sa.Column(sa.Text(), nullable=True)
+    country = sa.Column(sa.String(128), nullable=True)
+#+end_src
+** Video
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/video.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['Video']
+
+
+class Video(Base):
+    __table_args__ = {'schema': 'youtube'}
+    __tablename__ = 'video'
+
+    id = sa.Column(
+        sa.String(256),
+        primary_key=True,
+    )
+    channel_id = sa.Column(
+        sa.String(256), sa.ForeignKey('youtube.channel.id'), nullable=False
+    )
+    category_id = sa.Column(
+        sa.Integer(), sa.ForeignKey('youtube.category.id'), nullable=False
+    )
+    name = sa.Column(sa.Text(), nullable=False)
+    url = sa.Column(sa.Text(), nullable=False)
+    language = sa.Column(sa.String(256), nullable=False)
+    duration = sa.Column(sa.Integer(), nullable=False)
+    created = sa.Column(sa.Date(), nullable=False)
+#+end_src
+** Watch
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/watch.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
+
+__all__ = ['Watch']
+
+
+class Watch(Base):
+    __table_args__ = {'schema': 'youtube'}
+    __tablename__ = 'watch'
+
+    video_id = sa.Column(
+        sa.String(256),
+        sa.ForeignKey('youtube.video.id'),
+        primary_key=True,
+    )
+    date = sa.Column(sa.Date(), nullable=False, primary_key=True)
+    kind = sa.Column(sa.String(256), nullable=False, primary_key=True)
+    duration = sa.Column(sa.Integer(), nullable=False)
+#+end_src
+
+* Parsing
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/youtube/__init__.py")
+from .api import *
+#+end_src
+
+** Youtube API
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/api.py")
+:END:
+
+Functions that work with YouTube API.
+
+The required imports:
+#+begin_src python
+import json
+import re
+import requests
+
+from sqrt_data.api import settings, DBConn
+from sqrt_data.models import Base
+from sqrt_data.models.youtube import Channel, Video, Category
+#+end_src
+
+Exported functions:
+#+begin_src python
+__all__ = ['get_video_by_id', 'init_db']
+#+end_src
+
+A function to get channel by its id, mostly to make sure that the channel exists.
+
+References:
+- [[https://developers.google.com/youtube/v3/docs/channels/list][YouTube Data API docs]]
+
+#+begin_src python
+def get_channel_by_id(id, db):
+    channel = db.query(Channel).filter_by(id=id).first()
+    if channel:
+        return channel
+
+    channel_response = requests.get(
+        'https://youtube.googleapis.com/youtube/v3/channels',
+        params={
+            'part': 'snippet',
+            'id': id,
+            'key': settings['google']['api_key']
+        }
+    )
+    channel_response.raise_for_status()
+    channel_data = channel_response.json()
+    channel_item = {
+        'id': id,
+        'url': f'https://youtube.com/c/{id}',
+        'name': 'unknown'
+    }
+    if len(channel_data['items']) > 0:
+        channel_item['name'] = channel_data['items'][0]['snippet']['title']
+        channel_item['description'] = channel_data['items'][0]['snippet'][
+            'description']
+        channel_item['country'] = channel_data['items'][0]['snippet']['country']
+    channel = Channel(**channel_item)
+    db.add(channel)
+    return channel
+#+end_src
+
+Parse video duration.
+
+References:
+- [[https://stackoverflow.com/a/49976787][StackOverflow answer]]
+
+#+begin_src python
+def yt_time(duration="P1W2DT6H21M32S"):
+    """
+    Converts YouTube duration (ISO 8061)
+    into Seconds
+
+    see http://en.wikipedia.org/wiki/ISO_8601#Durations
+    """
+    ISO_8601 = re.compile(
+        'P'   # designates a period
+        '(?:(?P<years>\d+)Y)?'   # years
+        '(?:(?P<months>\d+)M)?'  # months
+        '(?:(?P<weeks>\d+)W)?'   # weeks
+        '(?:(?P<days>\d+)D)?'    # days
+        '(?:T' # time part must begin with a T
+        '(?:(?P<hours>\d+)H)?'   # hours
+        '(?:(?P<minutes>\d+)M)?' # minutes
+        '(?:(?P<seconds>\d+)S)?' # seconds
+        ')?')   # end of time part
+    # Convert regex matches into a short list of time units
+    units = list(ISO_8601.match(duration).groups()[-3:])
+    # Put list in ascending order & remove 'None' types
+    units = list(reversed([int(x) if x != None else 0 for x in units]))
+    # Do the maths
+    return sum([x*60**units.index(x) for x in units])
+#+end_src
+
+Get video by its id.
+
+References:
+- [[https://developers.google.com/youtube/v3/docs/videos/list][YouTube Data API docs]]
+
+#+begin_src python
+def get_video_by_id(id, db):
+    video = db.query(Video).filter_by(id=id).first()
+    if video:
+        return video
+
+    video_response = requests.get(
+        'https://youtube.googleapis.com/youtube/v3/videos',
+        params={
+            'part': 'snippet,contentDetails',
+            'id': id,
+            'key': settings['google']['api_key']
+        }
+    )
+    video_response.raise_for_status()
+    video_data = video_response.json()
+    if len(video_data['items']) == 0:
+        return None
+    item = video_data['items'][0]['snippet']
+    get_channel_by_id(item['channelId'], db)
+    db.commit()
+    video = Video(**{
+        'id': id,
+        'channel_id': item['channelId'],
+        'category_id': item['categoryId'],
+        'name': item['title'],
+        'url': f'https://youtube.com/watch?v={id}',
+        'language': item['defaultLanguage'],
+        'created': item['publishedAt'],
+        'duration': yt_time(video_data['items'][0]['contentDetails']['duration'])
+    })
+    db.add(video)
+    return video
+#+end_src
+
+Fill the list of categories.
+
+References:
+- [[https://developers.google.com/youtube/v3/docs/videoCategories/list][YouTube Data API docs]]
+
+#+begin_src python
+def init_categories(db):
+    categories_response = requests.get(
+        'https://youtube.googleapis.com/youtube/v3/videoCategories',
+        params={
+            'part': 'snippet',
+            'regionCode': 'US',
+            'key': settings['google']['api_key']
+        }
+    )
+    categories_response.raise_for_status()
+    categories = categories_response.json()['items']
+    for category in categories:
+        db.merge(
+            Category(id=int(category['id']), name=category['snippet']['title'])
+        )
+#+end_src
+
+Initialize the database.
+#+begin_src python
+def init_db():
+    DBConn()
+    DBConn.create_schema('youtube', Base)
+
+    with DBConn.get_session() as db:
+        init_categories(db)
+        # get_video_by_id('_OsIW3ufZ6I', db)
+        db.commit()
+#+end_src
+
+* CLI
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/youtube.py") :comments link
+:END:
+The CLI interface via click.
+
+#+begin_src python
+import click
+from sqrt_data.parse import youtube as youtube_
+#+end_src
+
+Export a click group name "youtube"
+#+begin_src python
+__all__ = ['youtube']
+
+@click.group(help='YouTube stats')
+def youtube():
+    pass
+#+end_src
+
+Initialize the DB
+#+begin_src python
+@youtube.command(help='Initialize the DB')
+def init_db():
+    youtube_.init_db()
+#+end_src
