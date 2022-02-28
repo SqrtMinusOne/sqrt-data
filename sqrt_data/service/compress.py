@@ -48,6 +48,7 @@ def get_files_to_compress():
         (date_group, dir, g.name.tolist())  # type: ignore
         for (date_group,
              dir), g in df.groupby(['date_group', 'dir'])  # type: ignore
+        if dir not in settings['archive']['exclude_dirs']
     ]
 # Compression:4 ends here
 

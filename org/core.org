@@ -67,6 +67,7 @@ target = 'ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync'
 [archive]
 days = 31
 timeout = 5
+exclude_dirs = ['@format {this.general.root}/android-misc', '@format {this.general.root}/youtube']
 
 [mpd]
 library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
