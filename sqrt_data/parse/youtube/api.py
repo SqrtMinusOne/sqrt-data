@@ -1,12 +1,16 @@
 import json
 import re
 import requests
+import pandas as pd
+import sqlalchemy as sa
+
+from urllib.parse import urlparse, parse_qs
 
 from sqrt_data.api import settings, DBConn
 from sqrt_data.models import Base
-from sqrt_data.models.youtube import Channel, Video, Category
+from sqrt_data.models.youtube import Channel, Video, Category, Watch
 
-__all__ = ['get_video_by_id', 'init_db']
+__all__ = ['get_video_by_id', 'init_db', 'get_video_id', 'store_logs']
 
 def get_channel_by_id(id, db):
     channel = db.query(Channel).filter_by(id=id).first()
@@ -127,3 +131,29 @@ def init_db():
         init_categories(db)
         # get_video_by_id('_OsIW3ufZ6I', db)
         db.commit()
+
+def get_video_id(url):
+    data = urlparse(url)
+    query = parse_qs(data.query)
+    id = query.get('v', [None])[0]
+    if id is None:
+        return
+    if id.endswith(']'):
+        id = id[:-1]
+    return id
+
+def store_logs(logs, db):
+    date = logs[0]['date']
+    df = pd.DataFrame(logs)
+    df = df.groupby(by=['video_id', 'kind', 'date']).sum().reset_index()
+    db.execute(sa.delete(Watch).where(Watch.date == date))
+    missed = False
+    for _, item in df.iterrows():
+        video, added = get_video_by_id(item['video_id'], db)
+        if added:
+            db.flush()
+        if video:
+            db.add(Watch(**item))
+        else:
+            missed = True
+    return missed

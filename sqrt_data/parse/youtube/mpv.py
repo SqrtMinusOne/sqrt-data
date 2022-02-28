@@ -4,24 +4,13 @@ import re
 import pandas as pd
 import sqlalchemy as sa
 from dateutil import parser
-from urllib.parse import urlparse, parse_qs
 
 from sqrt_data.models.youtube import Watch
 from sqrt_data.api import HashDict, DBConn, settings
 
-from .api import get_video_by_id
+from .api import get_video_by_id, get_video_id, store_logs
 
 __all__ = ['parse_mpv']
-
-def get_video_id(url):
-    data = urlparse(url)
-    query = parse_qs(data.query)
-    id = query.get('v', [None])[0]
-    if id is None:
-        return
-    if id.endswith(']'):
-        id = id[:-1]
-    return id
 
 def process_log(filename):
     with open(filename, 'r') as f:
@@ -77,22 +66,6 @@ def process_log(filename):
         print(f'Error in {filename}')
 
     return res, current_video is None
-
-def store_logs(logs, db):
-    date = logs[0]['date']
-    df = pd.DataFrame(logs)
-    df = df.groupby(by=['video_id', 'kind', 'date']).sum().reset_index()
-    db.execute(sa.delete(Watch).where(Watch.date == date))
-    missed = False
-    for _, item in df.iterrows():
-        video, added = get_video_by_id(item['video_id'], db)
-        if added:
-            db.flush()
-        if video:
-            db.add(Watch(**item))
-        else:
-            missed = True
-    return missed
 
 def parse_mpv(confirm_missed):
     files = glob.glob(f'{settings["youtube"]["mpv_folder"]}/*.log')
