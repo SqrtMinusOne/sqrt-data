@@ -50,6 +50,9 @@ unknown = 'Emacs' # EXWM
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'
 
+[youtube]
+mpv_folder = '@format {this.general.root}/mpv'
+
 [vk]
 author = 'Pavel Korytov'
 schema = 'vk'

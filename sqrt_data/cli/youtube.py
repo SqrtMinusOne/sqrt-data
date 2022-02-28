@@ -16,3 +16,10 @@ def youtube():
 def init_db():
     youtube_.init_db()
 # CLI:3 ends here
+
+# [[file:../../org/youtube.org::*CLI][CLI:4]]
+@youtube.command(help='Parse MPV logs')
+@click.option('-c', '--confirm-missing', is_flag=True)
+def parse_mpv(confirm_missing):
+    youtube_.parse_mpv(confirm_missing)
+# CLI:4 ends here

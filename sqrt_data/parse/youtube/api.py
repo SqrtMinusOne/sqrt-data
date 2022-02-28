@@ -11,7 +11,7 @@ __all__ = ['get_video_by_id', 'init_db']
 def get_channel_by_id(id, db):
     channel = db.query(Channel).filter_by(id=id).first()
     if channel:
-        return channel
+        return channel, False
 
     channel_response = requests.get(
         'https://youtube.googleapis.com/youtube/v3/channels',
@@ -32,10 +32,10 @@ def get_channel_by_id(id, db):
         channel_item['name'] = channel_data['items'][0]['snippet']['title']
         channel_item['description'] = channel_data['items'][0]['snippet'][
             'description']
-        channel_item['country'] = channel_data['items'][0]['snippet']['country']
+        channel_item['country'] = channel_data['items'][0]['snippet'].get('country', None)
     channel = Channel(**channel_item)
     db.add(channel)
-    return channel
+    return channel, True
 
 def yt_time(duration="P1W2DT6H21M32S"):
     """
@@ -62,10 +62,16 @@ def yt_time(duration="P1W2DT6H21M32S"):
     # Do the maths
     return sum([x*60**units.index(x) for x in units])
 
+def process_language(item):
+    lang = item.get('defaultLanguage', None) or item.get('defaultAudioLanguage', None)
+    if not lang:
+        return '??'
+    return lang.split('-')[0]
+
 def get_video_by_id(id, db):
     video = db.query(Video).filter_by(id=id).first()
     if video:
-        return video
+        return video, False
 
     video_response = requests.get(
         'https://youtube.googleapis.com/youtube/v3/videos',
@@ -78,21 +84,24 @@ def get_video_by_id(id, db):
     video_response.raise_for_status()
     video_data = video_response.json()
     if len(video_data['items']) == 0:
-        return None
+        print(f'Video not found : {id}')
+        return None, None
     item = video_data['items'][0]['snippet']
-    get_channel_by_id(item['channelId'], db)
+    _, new_channel = get_channel_by_id(item['channelId'], db)
+    if new_channel:
+        db.flush()
     video = Video(**{
         'id': id,
         'channel_id': item['channelId'],
         'category_id': item['categoryId'],
         'name': item['title'],
         'url': f'https://youtube.com/watch?v={id}',
-        'language': item['defaultLanguage'],
+        'language': process_language(item),
         'created': item['publishedAt'],
         'duration': yt_time(video_data['items'][0]['contentDetails']['duration'])
     })
     db.add(video)
-    return video
+    return video, True
 
 def init_categories(db):
     categories_response = requests.get(
@@ -115,6 +124,6 @@ def init_db():
     DBConn.create_schema('youtube', Base)
 
     with DBConn.get_session() as db:
-        # init_categories(db)
-        get_video_by_id('_OsIW3ufZ6I', db)
+        init_categories(db)
+        # get_video_by_id('_OsIW3ufZ6I', db)
         db.commit()
