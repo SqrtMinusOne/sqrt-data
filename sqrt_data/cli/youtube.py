@@ -23,3 +23,9 @@ def init_db():
 def parse_mpv(confirm_missing):
     youtube_.parse_mpv(confirm_missing)
 # CLI:4 ends here
+
+# [[file:../../org/youtube.org::*CLI][CLI:5]]
+@youtube.command(help='Parse NewPipe logs')
+def parse_newpipe():
+    youtube_.parse_newpipe()
+# CLI:5 ends here

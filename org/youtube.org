@@ -235,10 +235,11 @@ from .channel import *
 from .video import *
 from .watch import *
 from .category import *
+from .newpipe_meta import *
 #+end_src
 
-And models:
-** Category
+** Main models
+*** Category
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/category.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
@@ -253,7 +254,7 @@ class Category(Base):
     id = sa.Column(sa.Integer(), primary_key=True)
     name = sa.Column(sa.Text(), nullable=False)
 #+end_src
-** Channel
+*** Channel
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/channel.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
@@ -274,7 +275,7 @@ class Channel(Base):
     description = sa.Column(sa.Text(), nullable=True)
     country = sa.Column(sa.String(128), nullable=True)
 #+end_src
-** Video
+*** Video
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/video.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
@@ -302,7 +303,7 @@ class Video(Base):
     duration = sa.Column(sa.Integer(), nullable=False)
     created = sa.Column(sa.Date(), nullable=False)
 #+end_src
-** Watch
+*** Watch
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/watch.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
@@ -323,11 +324,33 @@ class Watch(Base):
     kind = sa.Column(sa.String(256), nullable=False, primary_key=True)
     duration = sa.Column(sa.Integer(), nullable=False)
 #+end_src
+** Metainformation
+*** NewPipe
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/youtube/newpipe_meta.py")
+import sqlalchemy as sa
+from sqrt_data.models import Base
 
+__all__ = ['NewPipeMeta']
+
+
+class NewPipeMeta(Base):
+    __table_args__ = {'schema': 'youtube'}
+    __tablename__ = '_newpipe_meta'
+
+    video_id = sa.Column(
+        sa.String(256),
+        sa.ForeignKey('youtube.video.id'),
+        primary_key=True,
+    )
+    access_date = sa.Column(sa.Date(), nullable=False)
+    progress = sa.Column(sa.Float(), nullable=True)
+    repeat_count = sa.Column(sa.Integer(), nullable=False)
+#+end_src
 * Parsing
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/youtube/__init__.py")
 from .api import *
 from .mpv import *
+from .newpipe import *
 #+end_src
 
 ** Youtube & Common API
@@ -639,6 +662,176 @@ def parse_mpv(confirm_missed):
                 db.commit()
                 h.commit()
 #+end_src
+** NewPipe
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/newpipe.py")
+:END:
+
+Parsing data from the SQLite database of NewPipe.
+
+NewPipe doesn't save all the required data, so I may need to manually edit the database from time to time.
+
+The required imports:
+#+begin_src python
+import contextlib
+import numpy as np
+import pandas as pd
+import sqlalchemy as sa
+import sqlite3
+
+from datetime import datetime
+
+from .api import get_video_by_id, get_video_id, store_logs
+from sqrt_data.models.youtube import Watch, NewPipeMeta
+from sqrt_data.api import HashDict, DBConn, settings
+#+end_src
+
+#+begin_src python
+__all__ = ['parse_newpipe']
+#+end_src
+
+A query to get the required data from the NewPipe database.
+#+NAME: get-newpipe-data
+#+begin_src sql
+SELECT S.url, S.duration, SS.progress_time / 1000 progress, SH.access_date, SH.repeat_count
+FROM streams S
+         INNER JOIN stream_history SH on S.uid = SH.stream_id
+         LEFT JOIN stream_state SS on S.uid = SS.stream_id
+WHERE S.url like '%youtube%'
+ORDER BY access_date
+#+end_src
+
+Get dates on which NewPipe was active on Android device.
+#+NAME: get-newpipe-aw-data
+#+begin_src sql
+SELECT date(timestamp) date, sum(duration) duration
+FROM aw.android_currentwindow ACW
+WHERE ACW.app = 'NewPipe'
+GROUP BY date
+ORDER BY date
+#+end_src
+
+Parse NewPipe timestamp:
+#+begin_src python
+def parse_timestamp(timestamp):
+    ts = int(timestamp // 1000)
+    return pd.Timestamp(datetime.utcfromtimestamp(ts).date())
+#+end_src
+
+Get data from new NewPipe database:
+#+begin_src python :noweb yes
+SQLITE_QUERY = """
+<<get-newpipe-data>>
+"""
+
+
+def get_newpipe_data():
+    with contextlib.closing(
+        sqlite3.connect(settings['youtube']['newpipe_db'])
+    ) as con:
+        with con as cur:
+            data = cur.execute(SQLITE_QUERY).fetchall()
+            df = pd.DataFrame(
+                data,
+                columns=['url', 'duration', 'progress', 'date', 'repeat_count']
+            )
+            df.date = df.date.apply(parse_timestamp)
+            df['video_id'] = df.url.apply(get_video_id)
+            df = df.drop(['url'], axis=1)
+            return df
+#+end_src
+
+Get data from the ActivityWatch:
+#+begin_src python :noweb yes
+AW_QUERY = """
+<<get-newpipe-aw-data>>
+"""
+
+def get_aw_data(db):
+    return pd.read_sql(AW_QUERY, db, parse_dates=['date'])
+#+end_src
+
+#+begin_src python
+DURATION_THRESHOLDS = [1200, 600, 300, 0]
+
+
+def fix_durations(group):
+    group = group.copy(deep=True)
+    group.progress = group.progress.fillna(group.duration_np)
+    time_spent = group.iloc[0].duration_aw
+    threshold_idx = 0
+    while group.progress.sum() >= time_spent:
+        time_extra = group.progress.sum() - time_spent
+        over_thresh = group[
+            group.duration_np >= DURATION_THRESHOLDS[threshold_idx]]
+        time_thresh = over_thresh.progress.sum()
+        if time_thresh >= time_extra:
+
+            def _fix_progress(datum):
+                if datum.duration_np >= DURATION_THRESHOLDS[threshold_idx]:
+                    prop = datum.progress / time_thresh
+                    return datum.progress - time_extra * prop
+                else:
+                    return datum.progress
+
+            group.progress = group.apply(_fix_progress, axis=1)
+            break
+        else:
+            threshold_idx += 1
+    return group
+
+
+def parse_newpipe_day(db, group):
+    new_group = fix_durations(group)
+    res = []
+    for datum in new_group.itertuples(index=False):
+        meta = db.query(NewPipeMeta).filter_by(video_id=datum.video_id).first()
+        if meta and meta.access_date == datum.date:
+            print(f'Found saved: {meta.video_id}')
+            continue
+        res.append(
+            {
+                'video_id': datum.video_id,
+                'date': datum.date.isoformat(),
+                'kind': 'newpipe',
+                'duration': datum.progress
+            }
+        )
+    if len(res) == 0:
+        return
+    store_logs(res, db)
+    for orig_datum in group.itertuples(index=False):
+        db.merge(
+            NewPipeMeta(
+                video_id=orig_datum.video_id,
+                access_date=datum.date.isoformat(),
+                progress=orig_datum.progress,
+                repeat_count=orig_datum.repeat_count
+            )
+        )
+        db.flush()
+#+end_src
+
+#+begin_src python
+def parse_newpipe():
+    with HashDict() as h:
+        if not h.is_updated(settings['youtube']['newpipe_db']):
+            print('NewPipe already loaded')
+            return
+    DBConn()
+    df_aw = get_aw_data(DBConn.engine)
+    df_np = get_newpipe_data()
+    df = pd.merge(df_np, df_aw, on='date', suffixes=('_np', '_aw'))
+
+    with HashDict() as h:
+        with DBConn.get_session() as db:
+            i = 0
+            for _, group in df.groupby('date'):
+                parse_newpipe_day(db, group)
+                db.commit()
+        h.save_hash(settings['youtube']['newpipe_db'])
+        h.commit()
+#+end_src
 * CLI
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/youtube.py") :comments link
@@ -672,4 +865,11 @@ Parse MPV
 @click.option('-c', '--confirm-missing', is_flag=True)
 def parse_mpv(confirm_missing):
     youtube_.parse_mpv(confirm_missing)
+#+end_src
+
+Parse NewPipe
+#+begin_src python
+@youtube.command(help='Parse NewPipe logs')
+def parse_newpipe():
+    youtube_.parse_newpipe()
 #+end_src

@@ -53,6 +53,7 @@ android_schema = 'android'
 
 [youtube]
 mpv_folder = '@format {this.general.root}/mpv'
+newpipe_db = '@format {this.general.root}/android-misc/newpipe/newpipe.db'
 
 [vk]
 author = 'Pavel Korytov'
