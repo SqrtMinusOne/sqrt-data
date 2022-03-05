@@ -100,7 +100,10 @@ def parse_newpipe_day(db, group):
     if len(res) == 0:
         return
     store_logs(res, db)
+    added_ids = set([r['video_id'] for r in res])
     for orig_datum in group.itertuples(index=False):
+        if orig_datum.video_id not in added_ids:
+            continue
         db.merge(
             NewPipeMeta(
                 video_id=orig_datum.video_id,
