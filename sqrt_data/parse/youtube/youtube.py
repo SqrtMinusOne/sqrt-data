@@ -212,9 +212,9 @@ def process_history(db):
     df_h = prepare_history_df(db)
     df_h, res = process_clear_dates(df_h, browser_dates, android_dates, [])
 
-    # df_b = get_browser_duration(df_h, browser_dates, db)
+    df_b = get_browser_duration(df_h, browser_dates, db)
     # df_b.to_csv('browser-duration.csv')
-    df_b = pd.read_csv('browser-duration.csv')
+    # df_b = pd.read_csv('browser-duration.csv')
     df_h, res = process_browser_duration(df_h, df_b, res)
     res = process_android_dates(df_h, android_dates, df_a, res)
 
