@@ -221,7 +221,7 @@ def process_history(db):
     df = pd.DataFrame(res)
     df.duration = df.duration.astype(int)
     db.flush()
-    db.execute(sa.delete(Watch).where(Watch.kind.like('youtube%')))
+    db.execute("DELETE FROM youtube.watch WHERE kind like 'youtube%'")
     for datum in df.itertuples(index=False):
         db.merge(Watch(
             video_id=datum.video_id,

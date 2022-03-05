@@ -863,6 +863,7 @@ def parse_newpipe():
 ** YouTube data
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/youtube.py")
+:ID:       eaa716b7-15b3-4168-b6f8-ac60f0add97b
 :END:
 Parsing data from YouTube watch history.
 
@@ -1134,7 +1135,7 @@ def process_history(db):
     df = pd.DataFrame(res)
     df.duration = df.duration.astype(int)
     db.flush()
-    db.execute(sa.delete(Watch).where(Watch.kind.like('youtube%')))
+    db.execute("DELETE FROM youtube.watch WHERE kind like 'youtube%'")
     for datum in df.itertuples(index=False):
         db.merge(Watch(
             video_id=datum.video_id,
