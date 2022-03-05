@@ -11,7 +11,6 @@ class NewPipeMeta(Base):
 
     video_id = sa.Column(
         sa.String(256),
-        sa.ForeignKey('youtube.video.id'),
         primary_key=True,
     )
     access_date = sa.Column(sa.Date(), nullable=False)
