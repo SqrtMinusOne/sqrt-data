@@ -87,7 +87,7 @@ api = 'http://localhost:5600/api'
 schema = 'aw'
 skip_afk_interval = '900'
 skip_afk_apps = '^(zoom|mpv)$'
-skip_afk_titles = '^(YouTube)$'
+skip_afk_titles = '(YouTube)'
 webtab_apps = '^(Nightly|firefox)$'
 skip_urls = '^(moz-extension|about:blank)'
 
@@ -99,10 +99,12 @@ unknown = 'Emacs' # EXWM
 [google]
 android_file = '@format {this.general.root}/google/android-history.json'
 android_schema = 'android'
+api_key = '<<google-api-key>>'
 
 [youtube]
 mpv_folder = '@format {this.general.root}/mpv'
 newpipe_db = '@format {this.general.root}/android-misc/newpipe/newpipe.db'
+browser_history = '@format {this.general.root}/google/youtube-browser-history.json'
 
 [vk]
 author = 'Pavel Korytov'

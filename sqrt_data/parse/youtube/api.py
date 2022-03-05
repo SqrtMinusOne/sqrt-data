@@ -10,7 +10,9 @@ from sqrt_data.api import settings, DBConn
 from sqrt_data.models import Base
 from sqrt_data.models.youtube import Channel, Video, Category, Watch
 
-__all__ = ['get_video_by_id', 'init_db', 'get_video_id', 'store_logs']
+__all__ = [
+    'get_video_by_id', 'init_db', 'get_video_id', 'store_logs', 'create_views'
+]
 
 def get_channel_by_id(id, db):
     channel = db.query(Channel).filter_by(id=id).first()
@@ -157,3 +159,17 @@ def store_logs(logs, db):
         else:
             missed = True
     return missed
+
+def create_views():
+    DBConn()
+    DBConn.engine.execute('DROP VIEW IF EXISTS "youtube"."watch_data"')
+    DBConn.engine.execute(
+    '''
+    CREATE VIEW youtube.watch_data AS
+    SELECT V.*, W.duration watched, W.kind, W.date, C.name category, C2.name channel_name, C2.country channel_country
+    FROM youtube.watch W
+             INNER JOIN youtube.video V ON W.video_id = V.id
+             INNER JOIN youtube.category C ON V.category_id = C.id
+             INNER JOIN youtube.channel C2 ON V.channel_id = C2.id;
+    '''
+    )

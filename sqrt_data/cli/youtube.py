@@ -29,3 +29,15 @@ def parse_mpv(confirm_missing):
 def parse_newpipe():
     youtube_.parse_newpipe()
 # CLI:5 ends here
+
+# [[file:../../org/youtube.org::*CLI][CLI:6]]
+@youtube.command(help='Parse YouTube logs')
+def parse_youtube():
+    youtube_.parse_youtube()
+# CLI:6 ends here
+
+# [[file:../../org/youtube.org::*CLI][CLI:7]]
+@youtube.command(help='Create views')
+def create_views():
+    youtube_.create_views()
+# CLI:7 ends here
