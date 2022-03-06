@@ -362,7 +362,7 @@ from .youtube import *
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/api.py")
 :END:
 
-Functions that work with YouTube API and some common functionality
+Functions that work with YouTube API and some common functionality.
 
 The required imports:
 #+begin_src python
@@ -454,7 +454,7 @@ def yt_time(duration="P1W2DT6H21M32S"):
     return sum([x*60**units.index(x) for x in units])
 #+end_src
 
-Get video by its id.
+Get a video by its id.
 
 References:
 - [[https://developers.google.com/youtube/v3/docs/videos/list][YouTube Data API docs]]
@@ -573,7 +573,7 @@ def store_logs(logs, db):
     return missed
 #+end_src
 
-Create a view for metabase
+Create a view for metabase.
 #+NAME: metabase-view
 #+begin_src sql
 CREATE VIEW youtube.watch_data AS
@@ -600,6 +600,8 @@ def create_views():
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/mpv.py")
 :END:
 The most straightforward part.
+
+My MPV script logs exactly which video was watched at which time and for how long, so I just have to load the data to the database.
 
 #+begin_src python
 import glob
@@ -677,6 +679,7 @@ def process_log(filename):
     return res, current_video is None
 #+end_src
 
+Parse new MPV files.
 #+begin_src python
 def parse_mpv(confirm_missed):
     files = glob.glob(f'{settings["youtube"]["mpv_folder"]}/*.log')
@@ -699,7 +702,7 @@ def parse_mpv(confirm_missed):
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/newpipe.py")
 :END:
 
-Parsing data from the SQLite database of NewPipe.
+Parsing the data from the SQLite database of NewPipe.
 
 NewPipe doesn't save all the required data, so I may need to manually edit the database from time to time.
 
@@ -722,7 +725,7 @@ from sqrt_data.api import HashDict, DBConn, settings
 __all__ = ['parse_newpipe']
 #+end_src
 
-A query to get the required data from the NewPipe database.
+A query to get the data we can from the NewPipe database.
 #+NAME: get-newpipe-data
 #+begin_src sql
 SELECT S.url, S.duration, SS.progress_time / 1000 progress, SH.access_date, SH.repeat_count
@@ -733,7 +736,7 @@ WHERE S.url like '%youtube%'
 ORDER BY access_date
 #+end_src
 
-Get dates on which NewPipe was active on Android device.
+Get dates on which NewPipe was active on Android device. This is used as an upper limit of how much time did I spend on NewPipe on a particular day.
 #+NAME: get-newpipe-aw-data
 #+begin_src sql
 SELECT date(timestamp) date, sum(duration) duration
@@ -782,6 +785,10 @@ AW_QUERY = """
 def get_aw_data(db):
     return pd.read_sql(AW_QUERY, db, parse_dates=['date'])
 #+end_src
+
+NewPipe doesn't record the watch time, instead it saves the position in the video (i.e. instances of seeking are not accounted for).
+
+Do fix that somewhat, I set the time from ActivityWatch as an upper limit and subtract the watch time of videos that are longer than a threshold.
 
 #+begin_src python
 DURATION_THRESHOLDS = [1200, 600, 300, 0]
@@ -844,6 +851,7 @@ def parse_newpipe_day(db, group):
         db.flush()
 #+end_src
 
+A function to do everything.
 #+begin_src python
 def parse_newpipe():
     with HashDict() as h:
@@ -867,8 +875,11 @@ def parse_newpipe():
 ** YouTube data
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/youtube/youtube.py")
+:ID:       eaa716b7-15b3-4168-b6f8-ac60f0add97b
 :END:
 Parsing data from YouTube watch history.
+
+This is the least straightforward part, as there's desperately little data available on the time spent on a particular video. So there are heuristics.
 
 #+begin_src python
 import pandas as pd
@@ -1138,7 +1149,7 @@ def process_history(db):
     df = pd.DataFrame(res)
     df.duration = df.duration.astype(int)
     db.flush()
-    db.execute(sa.delete(Watch).where(Watch.kind.like('youtube%')))
+    db.execute("DELETE FROM youtube.watch WHERE kind like 'youtube%'")
     for datum in df.itertuples(index=False):
         db.merge(Watch(
             video_id=datum.video_id,
