@@ -148,7 +148,11 @@ def store_logs(logs, db):
     date = logs[0]['date']
     df = pd.DataFrame(logs)
     df = df.groupby(by=['video_id', 'kind', 'date']).sum().reset_index()
-    db.execute(sa.delete(Watch).where(Watch.date == date))
+    db.execute(
+        sa.delete(Watch).where(
+            sa.and_(Watch.date == date, Watch.kind == logs[0]['kind'])
+        )
+    )
     missed = False
     for _, item in df.iterrows():
         video, added = get_video_by_id(item['video_id'], db)
