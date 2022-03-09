@@ -27,6 +27,13 @@ GROUP BY date
 ORDER BY date
 """
 
+LAST_ENTRY_QUERY = """
+SELECT date FROM youtube.watch
+WHERE kind like 'youtube%'
+ORDER BY date DESC
+LIMIT 1
+"""
+
 
 def get_data(db):
     df_bd = pd.read_sql(AW_DATES_QUERY, db)
@@ -37,7 +44,11 @@ def get_data(db):
 
     df_a = pd.read_sql(ANDROID_USAGE_QUERY, db, parse_dates=['date'])
 
-    return aw_dates, android_dates, df_a
+    with db.connect() as con:
+        last_entry_data = con.execute(sa.text(LAST_ENTRY_QUERY))
+        last_entry = list(last_entry_data)[0][0]
+
+    return aw_dates, android_dates, df_a, last_entry
 
 def prepare_history_df(db):
     df_h = pd.read_json(settings['youtube']['browser_history'])
@@ -207,9 +218,13 @@ def process_android_dates(df_h, android_dates, df_a, res):
     return res
 
 def process_history(db):
-    browser_dates, android_dates, df_a = get_data(DBConn.engine)
+    browser_dates, android_dates, df_a, last_entry = get_data(DBConn.engine)
 
     df_h = prepare_history_df(db)
+    df_h = df_h[df_h.date > last_entry]
+    if len(df_h):
+        print('YouTube history saved')
+        return
     df_h, res = process_clear_dates(df_h, browser_dates, android_dates, [])
 
     df_b = get_browser_duration(df_h, browser_dates, db)
@@ -221,14 +236,21 @@ def process_history(db):
     df = pd.DataFrame(res)
     df.duration = df.duration.astype(int)
     db.flush()
-    db.execute("DELETE FROM youtube.watch WHERE kind like 'youtube%'")
+    db.execute(
+        """
+        DELETE FROM youtube.watch WHERE kind like 'youtube%'
+        AND date > last_entry
+        """
+    )
     for datum in df.itertuples(index=False):
-        db.merge(Watch(
-            video_id=datum.video_id,
-            date=datum.date,
-            kind=datum.kind,
-            duration=int(datum.duration)
-        ))
+        db.merge(
+            Watch(
+                video_id=datum.video_id,
+                date=datum.date,
+                kind=datum.kind,
+                duration=int(datum.duration)
+            )
+        )
     db.commit()
 
 def parse_youtube():
