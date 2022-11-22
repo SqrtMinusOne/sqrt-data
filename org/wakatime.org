@@ -1,4 +1,5 @@
 #+TITLE: WakaTime data
+#+PROPERTY: header-args :mkdirp yes
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
@@ -7,44 +8,44 @@
 Unfortunately, the service is SaaS and the data is stored on the company's servers, so use it at your discretion.
 
 There are two ways to access the data:
-- The "official" API provides the complete data, but doesn't allow accessing the records older than 2 weeks without paid subscription.
-- The coding activity export provides the data for the entire time, but it is already aggregated to the daily format.
+- The "official" API provides the full data, but required a subscription to access the records older than 2 weeks.
+- The coding activity export provides the aggregated data for the entire usage history.
 
 The latter is interesting enough, so I'm fine with using it.
 
-Edit <2022-01-07 Fri>: WakaTime now provides full access to the data without subscription via data export.
+Edit <2022-01-07 Fri>: WakaTime now allows to export the unprocessed data.
 
-The =sqrt_data.parse.wakatime= module consists of the two following parts:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/__init__.py")
-from .get_data import *
-from .load import *
-#+end_src
-
-* Get the data
+* Flow
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/get_data.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/flow.py") :comments link
 :END:
-So, first, we have to get a WakaTime dump. The seems to be no way to initiate the export with the API, which makes sense, but somehow it is possible to download the dump via API.
 
-So, import a few basic packages:
+Import the packages:
 #+begin_src python
 import base64
-import logging
 import os
 import requests
+import pandas as pd
+import json
+from collections import deque
+from prefect import task, flow, get_run_logger
+from tqdm import tqdm
 
-from sqrt_data.api import settings
+from sqrt_data_service.api import settings, DBConn, FileHasher
 #+end_src
 
-Export the function to get the data:
-#+begin_src python
-__all__ = ['get_data']
-#+end_src
+** Download dump
+First, we have to get a WakaTime dump.
 
-The function itself performs a request to WakaTime to check if there are available dumps. If there are, it downloads the dump to the temporary directory.
+It seems like there's no way to initiate the export via the API, but somehow it's possible to download the dump.
+
+The first task checks if the dump is available, and downloads it if so.
 #+begin_src python
-def get_data():
-    key = base64.b64encode(str.encode(settings["waka"]["api_key"])).decode('utf-8')
+@task
+def download_wakatime_dump():
+    logger = get_run_logger()
+    key = base64.b64encode(str.encode(settings["waka"]["api_key"])
+                          ).decode('utf-8')
     headers = {'Authorization': f'Basic {key}'}
     r = requests.get(
         f'{settings["waka"]["api_url"]}/users/current/datadumps',
@@ -52,82 +53,44 @@ def get_data():
     )
     data = r.json()['data']
     if len(data) == 0:
-        logging.info('No WakaTime dumps found')
-        return
+        logger.info('No WakaTime dumps found')
+        return None
 
     dump_data = data[0]
     if dump_data['status'] != 'Completed':
-        logging.info('Dump not completed')
-        return
+        logger.info('Dump not completed')
+        return None
 
     filename = f'wakatime-{dump_data["created_at"]}.json'
     path = os.path.join(
         os.path.expanduser(settings['general']['temp_data_folder']), filename
     )
     if os.path.exists(path):
-        logging.info('File already downloaded')
-        return
+        logger.info('File already downloaded')
+        return path
+    os.makedirs(
+        os.path.expanduser(settings['general']['temp_data_folder']),
+        exist_ok=True
+    )
 
     dump = requests.get(dump_data['download_url'])
     with open(path, 'wb') as f:
         f.write(dump.content)
-    logging.info('WakaTime dump downloaded to %s', filename)
+    logger.info('WakaTime dump downloaded to %s', filename)
+    return path
 #+end_src
 
-* Parse the data
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/wakatime/load.py") :comments link
-:END:
-
-Import the required functions:
-#+begin_src python
-import logging
-import glob
-import json
-import os
-from collections import deque
-
-import pandas as pd
-from tqdm import tqdm
-
-from sqrt_data.api import settings, DBConn, HashDict
-#+end_src
-
-Export the function which does the parsing and loading:
-#+begin_src python
-__all__ = ['load']
-#+end_src
-
-First, we need to get the path to the file with dump, which was downloaded in the previous section:
-#+begin_src python
-def get_dump_file():
-    files = glob.glob(
-        f'{os.path.expanduser(settings["general"]["temp_data_folder"])}/wakatime*.json'
-    )
-    if len(files) == 0:
-        logging.info('No WakaTime dumps found')
-        return None
-
-    files = sorted(files)
-    hashes = HashDict()
-
-    dump = files[-1]
-    if not hashes.is_updated(dump):
-        logging.info('Dump already loaded')
-        return None
-    return dump
-#+end_src
-
-Next, convert the dump to the set of DataFrames. Here is an outline of the dump structure:
+** Parse dump
+Next, convert the dump to the set of DataFrames. Here's an outline of the dump structure:
 
 The dump is structured like this:
 - =user= - information about the user
 - =range= - looks like the start and the end of observations
 - =days= - An array of aggregated data per each day.
 
-An entry for a particular days is a dictionary with the following values:
+An entry for one day is a dictionary with the following values:
 - =date= - the date in the =YYYY-MM-DD= format
-- =categories= - here starts the actual data
+- =categories= - here starts the data
 - =dependencies=
 - =editors=
 - =languages=
@@ -144,7 +107,7 @@ A single datum normally consists of a few common time-related fields:
 - =total_seconds=
 - =text=
 
-=grand_total= is just a single datum for the given day.
+=grand_total= is an aggredate datum for the given day.
 
 =categories=, =dependencies=, =editors=, =languages=, =machines= and =operating_systems= are arrays of such datums, extended with the following fields:
 - =name= - the name of editor/category/etc
@@ -156,19 +119,20 @@ A single datum normally consists of a few common time-related fields:
 - =categories=
 - =dependencies=
 - =editors=
-- =entities= - the actual files!
+- =entities= - files!
 - =grand_total=
 - =languages=
 - =machines=
 - =operating_systems=
 
-Here, once again =grand_total= is a single datum for the given project for the given day.
+=grand_total= is once again an aggregate datum for the given project for the given day.
 
-=branches=, =categories=, =dependencies=, =editors=, =entries=, =languages=, =machines= and =operating_systems= are arrays of the "extended datums".
+=branches=, =categories=, =dependencies=, =editors=, =entries=, =languages=, =machines= and =operating_systems= are arrays of such "extended datums".
 
 For the purposes of my analysis, I merge the data from the =projects= arrays.
 #+begin_src python
-def get_dfs(data):
+@task
+def parse_wakatime_dump(data):
     deques = {}
 
     for day in tqdm(data['days']):
@@ -211,55 +175,83 @@ def get_dfs(data):
     return dfs
 #+end_src
 
-In the end I have 9 DataFrames with modified "extended datums" with =date= and =project= attributes.
+In the end we have 9 DataFrames of "extended datums" with =date= and =project= attributes.
 
-Finally, putting all of this together:
+** Store dump
+Finally, store the data into database:
 #+begin_src python
-def load():
-    DBConn()
+@task
+def store_wakatime_dump(dfs):
     DBConn.create_schema(settings['waka']['schema'])
+    for name, df in tqdm(dfs.items()):
+        df.to_sql(
+            name,
+            schema=settings['waka']['schema'],
+            con=DBConn.engine,
+            if_exists='replace'
+        )
+        print(df)
+#+end_src
 
-    dump = get_dump_file()
-    if dump is None:
+Putting all of this together:
+#+begin_src python
+@flow
+def wakatime():
+    DBConn()
+    hasher = FileHasher()
+    logger = get_run_logger()
+
+    dump_file = download_wakatime_dump()
+    if dump_file is None:
         return
 
-    with open(dump, 'r') as f:
+    if hasher.is_updated(dump_file) is False:
+        logger.info('Dump already processed')
+        return
+
+    with open(dump_file, 'r') as f:
         data = json.load(f)
 
-    dfs = get_dfs(data)
-
-    with HashDict() as h:
-        for name, df in tqdm(dfs.items()):
-            df.to_sql(
-                name,
-                schema=settings['waka']['schema'],
-                con=DBConn.engine,
-                if_exists='replace'
-            )
-            print(df)
-        h.save_hash(dump)
-        h.commit()
+    dfs = parse_wakatime_dump(data)
+    store_wakatime_dump(dfs)
+    hasher.save_hash(dump_file)
 #+end_src
 
-* CLI
-The CLI exposes the corresponding commands from the previous sections:
-
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/cli/waka.py")
-import click
-from sqrt_data.parse import wakatime
-
-
-@click.group(help='WakaTime stats')
-def waka():
-    pass
-
-
-@waka.command(help='Download the latest WakaTime dump')
-def get_data():
-    wakatime.get_data()
-
-
-@waka.command(help='Load the dump to DB')
-def load():
-    wakatime.load()
+Execute the flow:
+#+begin_src python
+if __name__ == '__main__':
+    wakatime()
 #+end_src
+
+* Deploy
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/deploy.py") :comments link
+:END:
+
+Create the deployment:
+#+begin_src python
+from prefect.deployments import Deployment
+from prefect.orion.schemas.schedules import CronSchedule
+
+from sqrt_data_service.api import settings
+from .flow import wakatime
+
+def create_deploy():
+    deployment = Deployment.build_from_flow(
+        flow=wakatime,
+        name="wakatime-dump",
+        work_queue_name=settings.prefect.queue,
+        schedule=(CronSchedule(cron="0 0 * * *"))
+    )
+    deployment.apply()
+
+if __name__ == '__main__':
+    create_deploy()
+#+end_src
+
+Run the following:
+#+begin_src bash :tangle no
+python -m sqrt_data_service.flows.wakatime.deploy
+#+end_src
+
+To create a deployment until I've found a better way.

@@ -57,6 +57,14 @@ port = 5432
 root = '@format {env[HOME]}/logs-sync-debug'
 temp_data_folder = '/tmp/sqrt-data'
 cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
+
+[prefect]
+queue = 'main'
+
+[waka]
+api_key = 'dummy'
+api_url = 'https://wakatime.com/api/v1'
+schema = 'wakatime'
 #+end_src
 
 ** Database
