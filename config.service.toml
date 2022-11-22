@@ -1,0 +1,13 @@
+dynaconf_merge = true
+
+[database]
+user = 'postgres'
+password = 'localdbpass'
+database = 'data'
+host = 'localhost'
+port = 5432
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+temp_data_folder = '/tmp/sqrt-data'
+cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
