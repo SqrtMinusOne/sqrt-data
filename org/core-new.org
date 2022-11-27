@@ -5,13 +5,11 @@
 #+PROPERTY: header-args:scheme :comments link :eval no
 #+PROPERTY: PRJ-DIR ..
 
-I'd name this "Electric Boogaloo", but the window of opportunity for that is long gone.
+The basic outline of the project is:
+- =sqrt_data_service= is deployed on the VPS and does data processing
+- =sqrt_data_agent= is installed on host machines and periodically sends data to the service.
 
 * Service API
-The central part of the project is a package called =sqrt_data_service=, which does most of the data processing.
-
-Some of the code is duplicated in the agent, because I've decided that extracting the common functionality into a separate package isn't worth it. Org Mode has noweb anyway.
-
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/__init__.py")
 from .config import *
 from .db import *
@@ -31,7 +29,7 @@ from dynaconf import Dynaconf
 __all__ = ['settings']
 
 settings_files = [
-    # os.path.expanduser('~/.config/sqrt-data/config.toml'),
+    # os.path.expanduser('~/.config/sqrt-data/config.service.toml'),
     'config.service.toml'
 ]
 
@@ -65,6 +63,10 @@ queue = 'main'
 api_key = 'dummy'
 api_url = 'https://wakatime.com/api/v1'
 schema = 'wakatime'
+
+[mpd]
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'
 #+end_src
 
 ** Database
@@ -486,4 +488,52 @@ if __name__ == '__main__':
     cli()
 #+end_src
 
+* Agent API
+Some of the code of the service is duplicated here, but I don't care that much.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_agent/api/__init__.py")
+from .config import *
+#+end_src
+
+** Configuration
+Also using dynaconf for configuration.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_agent/api/config.py")
+import os
+
+from dynaconf import Dynaconf
+
+__all__ = ['settings']
+
+settings_files = [
+    os.path.expanduser('~/.config/sqrt-data/config.agent.toml'),
+    'config.agent.toml'
+]
+
+if all([not os.path.exists(f) for f in settings_files]):
+    print('No config found!')
+
+settings = Dynaconf(settings_files=settings_files)
+#+end_src
+
+#+begin_src conf-toml :tangle (my/org-prj-dir "config.agent.toml")
+dynaconf_merge = true
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+
+[mpd]
+log_folder = '@format {this.general.root}/mpd/logs'
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+exception_timeout = 5
+exception_count = 10
+listened_threshold = 0.5
+custom_attrs = ['musicbrainz_albumid', 'musicbrainz_artistid', 'musicbrainz_trackid']
+#+end_src
+
 * Deploy
+** Agent
+Run the following as services:
+#+begin_src bash
+python -m sqrt_data_agent.mpd
+#+end_src

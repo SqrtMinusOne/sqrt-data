@@ -19,3 +19,7 @@ queue = 'main'
 api_key = 'dummy'
 api_url = 'https://wakatime.com/api/v1'
 schema = 'wakatime'
+
+[mpd]
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'

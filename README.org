@@ -6,6 +6,10 @@
 
 [[https://forthebadge.com/images/badges/works-on-my-machine.svg]]
 
+#+begin_quote
+I'd name this "Electric Boogaloo", but the window of opportunity for that is long gone.
+#+end_quote
+
 This is an agglomeration of self-quantification scripts I've written over the years.
 
 The basic principles are:

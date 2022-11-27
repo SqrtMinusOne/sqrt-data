@@ -1,0 +1,12 @@
+dynaconf_merge = true
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+
+[mpd]
+log_folder = '@format {this.general.root}/mpd/logs'
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+exception_timeout = 5
+exception_count = 10
+listened_threshold = 0.5
+custom_attrs = ['musicbrainz_albumid', 'musicbrainz_artistid', 'musicbrainz_trackid']

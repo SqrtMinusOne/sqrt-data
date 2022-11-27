@@ -1,16 +1,231 @@
 #+TITLE: MPD data
+#+PROPERTY: header-args :mkdirp yes
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
-Parsing the data from [[https://www.musicpd.org/][Music Player Daemon]].
+Collecting and parsing data from [[https://www.musicpd.org/][Music Player Daemon]].
 
-As it doesn't log too much data by default, I've mage a small Python app called [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]] to collect the required information. The app creates one log file in the CSV format per day and hostname.
+Actually, this includes data from the now defunct Google Play Music. The code for parsing that is somewhere in the history of this repo.
+
+* Agent
+Usage:
+- Run this to start the logging daemon: =python -m sqrt_data_agent.mpd=
+- Run this to dump the library: =python -m sqrt_data_agent.mpd_save_library=
+
+** Logging
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data_agent/mpd.py")
+:END:
+MPD doesn't collect log too much, so I have a small daemon doing that.
+
+
+#+begin_src python
+import csv
+import logging
+import os
+import socket
+import sys
+import time
+from datetime import datetime, timedelta
+
+from mpd import MPDClient
+
+from sqrt_data_agent.api import settings
+#+end_src
+
+Using [[https://stackoverflow.com/a/7758075][this StackOverflow answser]] to prevent the daemon from being launched multiple times. Works only on Linux.
+
+#+begin_src python
+def get_lock(process_name):
+    get_lock._lock_socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        get_lock._lock_socket.bind('\0' + process_name)
+        logging.info('Got the lock')
+    except socket.error:
+        logging.info('Lock already exists, exiting')
+        sys.exit()
+#+end_src
+
+Get the filename of the current day log.
+#+begin_src python
+def get_log_filename():
+    return os.path.join(
+        settings.mpd.log_folder,
+        f'{datetime.now().strftime("%Y-%m-%d")}-{socket.gethostname()}-log.csv'
+    )
+#+end_src
+
+The script uses [[https://github.com/Mic92/python-mpd2][python-mpd2]], which has a decent documentation. The function below records the current song.
+
+If the fraction of the listened time is greater than =listened_threshold=, the song is considered "listened". This seems to work well for the value of 0.5.
+#+begin_src python
+def write_song(song):
+    time_listened = (datetime.now() - song['start_time']).seconds
+    duration = float(song['duration'])
+    if (time_listened / duration > settings.mpd.listened_threshold):
+        evt_type = 'listened'
+    else:
+        evt_type = 'skipped'
+
+    event = {
+        'file': song['file'],
+        'artist': song.get('artist', ''),
+        'album_artist': song.get('albumartist', ''),
+        'title': song.get('title', ''),
+        'album': song.get('album'),
+        'time': song['start_time'].isoformat(' ', 'seconds'),
+        'type': evt_type,
+        **{attr: song.get(attr, '')
+           for attr in settings.mpd.custom_attrs}
+    }
+
+    fieldnames = event.keys()
+    log_file = get_log_filename()
+    log_exists = os.path.exists(log_file)
+    mode = 'a' if log_exists else 'w'
+    with open(log_file, mode) as f:
+        writer = csv.DictWriter(f, fieldnames)
+        if not log_exists:
+            writer.writeheader()
+            logging.info('Initialized CSV log')
+        writer.writerow(event)
+        logging.info('Saved an entry')
+#+end_src
+
+Get current song.
+#+begin_src python
+def get_current_song(mpd: MPDClient):
+    status = mpd.status()
+    song = mpd.currentsong()
+    if song and status['state'] != 'stop':
+        time_elapsed = float(status['elapsed'])
+        song['start_time'] = datetime.now() - timedelta(
+            seconds=int(time_elapsed))
+        return song
+    return None
+#+end_src
+
+Watch the current song in an endless loop.
+#+begin_src python
+current_song = None
+
+def watch(mpd: MPDClient):
+    global current_song
+
+    while True:
+        song = get_current_song(mpd)
+
+        if not current_song:
+            current_song = song
+        elif not song or (song and song['file'] != current_song['file']):
+            write_song(current_song)
+            current_song = song
+
+        mpd.idle('player')
+#+end_src
+
+Connect to the client.
+#+begin_src python
+def connect():
+    mpd = MPDClient()
+    mpd.connect('localhost', 6600)
+    logging.info('Connect successful, running')
+    return mpd
+#+end_src
+
+The main function.
+
+I don't remember the details already, but I think I had some issues with keeping connections to MPD, so this function tries to reconnect is the connection was lost.
+
+#+begin_src python
+def main():
+    last_error = datetime.now()
+    error_count = 0
+
+    get_lock('sqrt-data-agent-mpd')
+
+    while True:
+        try:
+            mpd = connect()
+            watch(mpd)
+        except Exception as exp:
+            logging.error(repr(exp))
+            logging.error('Waiting %s seconds, error count: %s',
+                          settings.mpd.exception_timeout, error_count)
+            time.sleep(settings.mpd.exception_timeout)
+
+            if (datetime.now() - last_error).seconds > 60:
+                error_count = 0
+            last_error = datetime.now()
+            error_count += 1
+            if error_count > settings.mpd.exception_count:
+                raise exp
+
+if __name__ == "__main__":
+    main()
+#+end_src
+** Storing the library
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_agent/mpd_save_library.py") :comments link
+:END:
+
+Another thing required is to save the current MPD library.
+
+Imports are as follows:
+#+begin_src python
+import os
+import dateutil
+import pandas as pd
+import numpy as np
+
+from mpd import MPDClient
+from sqrt_data_agent.api import settings
+#+end_src
+
+Extract the year from the MPD entry:
+#+begin_src python
+def get_year(datum):
+    try:
+        if datum['originaldate']:
+            return dateutil.parser.parse(datum['originaldate']).year
+    except TypeError:
+        pass
+    if datum['date']:
+        try:
+            return dateutil.parser.parse(datum['date']).year
+        except TypeError:
+            pass
+    return None
+#+end_src
+
+And save the library to the csv file:
+#+begin_src python
+def save_library():
+    mpd = MPDClient()
+    mpd.connect("localhost", 6600)
+
+    data = mpd.listallinfo()
+    data = [datum for datum in data if 'directory' not in datum]
+    df = pd.DataFrame(data)
+
+    df['year'] = df.apply(get_year, axis=1)
+    df.duration = df.time
+    df['album_artist'] = df.albumartist
+
+    csv_path = os.path.expanduser(settings['mpd']['library_csv'])
+
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    df.to_csv(csv_path, index=False)
+
+if __name__ == '__main__':
+    save_library()
+#+end_src
 
 * Models
-One case where I use the SQLAlchemy models for some reason.
+Using SQLAlchemy models here for some reason.
 
-A model for a particular song:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/MpdSong.py")
+The model for a particular song:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/mpd/MpdSong.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
 
@@ -43,8 +258,8 @@ class MpdSong(Base):
     musicbrainz_trackid = sa.Column(sa.String(256), nullable=True)
 #+end_src
 
-A model for a record that a particular song was listened at a particular time:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/SongListened.py")
+The model that records that a particular song was listened at a particular time.
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/mpd/SongListened.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
 
@@ -68,194 +283,130 @@ class SongListened(Base):
     )
 #+end_src
 
-And an =__init__.py= file for the mpd models package:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/mpd/__init__.py")
+And =__init__.py= for the MPD models package:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/mpd/__init__.py")
 from .MpdSong import *
 from .SongListened import *
 #+end_src
 
-* Data
-** Storing the library
+* Flow
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/save_library.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/mpd/flow.py") :comments link
 :END:
 
-First, in accordance with the outlined way of exchanging the data between the machines and the server, we need to save the MPD library to the CSV format.
-
-Imports are as follows:
-#+begin_src python
-import os
-import dateutil
-import pandas as pd
-
-from mpd import MPDClient
-from sqrt_data.api import settings
-#+end_src
-
-And the only exported function:
-#+begin_src python
-__all__ = ['save_library']
-#+end_src
-
-Extract year from the MPD entry:
-#+begin_src python
-def get_year(datum):
-    try:
-        if datum['originaldate']:
-            return dateutil.parser.parse(datum['originaldate']).year
-    except TypeError:
-        pass
-    if datum['date']:
-        return dateutil.parser.parse(datum['date']).year
-    return None
-#+end_src
-
-And save the library to the csv file:
-#+begin_src python
-def save_library():
-    mpd = MPDClient()
-    mpd.connect("localhost", 6600)
-
-    data = mpd.listallinfo()
-    data = [datum for datum in data if 'directory' not in datum]
-    df = pd.DataFrame(data)
-
-    df['year'] = df.apply(get_year, axis=1)
-    df.duration = df.time
-    df['album_artist'] = df.albumartist
-
-    csv_path = os.path.expanduser(settings['mpd']['library_csv'])
-
-    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
-    df.to_csv(csv_path, index=False)
-#+end_src
-** Loading the library
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/load_library.py") :comments link
-:END:
-Next, load the library to the database.
-
-The required imports:
 #+begin_src python
 import os
 import sys
 import logging
+import glob
 
+from prefect import task, flow, get_run_logger
 import pandas as pd
 from tqdm import tqdm
 
-from sqrt_data.api import HashDict, DBConn, settings
-from sqrt_data.models import Base
-from sqrt_data.models.mpd import MpdSong
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from sqrt_data_service.api import settings, DBConn, FileHasher
+from sqrt_data_service.models import Base
+from sqrt_data_service.models.mpd import MpdSong, SongListened
 #+end_src
 
-The only exported function:
-#+begin_src python
-__all__ = ['load_library']
-#+end_src
+** Loading the library
+First, load the library:
 
-And the function itself:
 #+begin_src python
+@task
 def load_library():
     csv_path = os.path.expanduser(settings['mpd']['library_csv'])
-    with HashDict() as h:
-        if not h.is_updated(csv_path):
-            logging.info('MPD library already saved, skipping')
-            return
+    hasher = FileHasher()
 
-        logging.info('Saving MPD Library')
-        df = pd.read_csv(csv_path)
-        DBConn()
-        DBConn.create_schema('mpd', Base)
+    logger = get_run_logger()
 
-        with DBConn.get_session() as db:
-            tracks = list(df.itertuples(index=False))
-            for track in tqdm(tracks):
-                track = track._asdict()
-                song = MpdSong(**{k:v for k, v in track.items() if k in MpdSong.__table__.columns.keys()})
+    if not hasher.is_updated(csv_path):
+        logger.info('MPD library already saved, skipping')
+        return
 
-                added = db.query(MpdSong).filter_by(file=track['file']).first()
-                if not added:
-                    db.merge(song)
-            db.commit()
-        h.save_hash(csv_path)
-        h.commit()
+    logger.info('Saving MPD Library')
+    df = pd.read_csv(csv_path)
+    DBConn.create_schema('mpd', Base)
+
+    with DBConn.get_session() as db:
+        tracks = list(df.itertuples(index=False))
+
+        song_data = []
+        for track in tqdm(tracks):
+            track = track._asdict()
+            song_datum = {k:v for k, v in track.items() if k in MpdSong.__table__.columns.keys()}
+            if pd.isna(song_datum['year']):
+                song_datum['year'] = None
+            song_data.append(song_datum)
+
+        insert_stmt = pg_insert(MpdSong)
+        upsert_stmt = insert_stmt.on_conflict_do_update(
+            constraint='MpdSong_file_key',
+            set_={
+                'duration': insert_stmt.excluded.duration,
+                'artist': insert_stmt.excluded.artist,
+                'album_artist': insert_stmt.excluded.album_artist,
+                'album': insert_stmt.excluded.album,
+                'title': insert_stmt.excluded.title,
+                'year': insert_stmt.excluded.year,
+                'musicbrainz_trackid': insert_stmt.excluded.musicbrainz_trackid
+            }
+        )
+
+        db.execute(upsert_stmt.values(song_data))
+        hasher.save_hash(csv_path, db)
+        db.commit()
+
+        logger.info(f'Saved {len(song_data)} records')
 #+end_src
 
 ** Loading the logs
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/mpd/load_logs.py") :comments link
-:END:
-Finally, loading the data from the mpd-watcher.
-
-The required imports:
-#+begin_src python
-import pandas as pd
-import sys
-import os
-import glob
-from tqdm import tqdm
-import logging
-
-from sqrt_data.api import DBConn, HashDict, settings
-from sqrt_data.models import Base
-from sqrt_data.models.mpd import MpdSong, SongListened
-#+end_src
-
-The only exported function:
-#+begin_src python
-__all__ = ['load_logs']
-#+end_src
+Second, load the logs:
 
 Getting a list of logs to load:
 #+begin_src python
+@task
 def get_logs_to_put():
     folder = os.path.expanduser(settings['mpd']['log_folder'])
     logs = glob.glob(f"{folder}/*.csv")
-    with HashDict() as h:
-        return [log for log in logs if h.is_updated(log)]
+    hasher = FileHasher()
+    with DBConn.get_session() as db:
+        return [log for log in logs if hasher.is_updated(log, db)]
 #+end_src
 
-A function to save one log file:
+Save one log file:
 #+begin_src python
+@task
 def put_log(filename):
-    logging.info('Reading %s', filename)
+    logger = get_run_logger()
+    logger.info('Reading %s', filename)
     df = pd.read_csv(filename)
     records = df.to_dict(orient='records')
     all_found = True
-    with HashDict() as h:
-        with DBConn.get_session() as db:
-            for record in tqdm(records):
-                if record['type'] == 'skipped':
-                    continue
-                song = db.query(MpdSong).filter_by(file=record['file']).first()
-                if song:
-                    listened = SongListened(song_id=song.id, time=record['time'])
-                    db.merge(listened)
-                else:
-                    logging.error('Song %s not found', record['file'])
-                    all_found = False
-            db.commit()
+    hasher = FileHasher()
+    with DBConn.get_session() as db:
+        for record in tqdm(records):
+            if record['type'] == 'skipped':
+                continue
+            song = db.execute(
+                sa.select(MpdSong).where(MpdSong.file == record['file'])
+            ).scalar_one_or_none()
+            if song:
+                listened = SongListened(song_id=song.id, time=record['time'])
+                db.merge(listened)
+            else:
+                logger.error('Song %s not found', record['file'])
+                all_found = False
         if all_found:
-            h.save_hash(filename)
-            h.commit()
-#+end_src
-
-And a function to save all the logs:
-#+begin_src python
-def load_logs():
-    logs = get_logs_to_put()
-    if len(logs) == 0:
-        logging.info('All logs are saved')
-        sys.exit(0)
-    DBConn()
-    for log in logs:
-        put_log(log)
+            hasher.save_hash(filename, db)
+        db.commit()
 #+end_src
 
 ** Postprocessing
-To make things a bit easier for Metabase, I create a view with the data from these two tables:
-
+Create a view to make things a bit easier for Metabase:
 #+begin_src sql :noweb-ref mpd-view
 drop view if exists mpd."MpdSongListened";
 create view mpd."MpdSongListened" as
@@ -271,71 +422,69 @@ left join mpd."MpdSong" S ON L.song_id = S.id
 order by time asc;
 #+end_src
 
-A function to create this view:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/mpd/postprocess.py") :comments link :noweb yes
-from sqrt_data.api import DBConn
-
-__all__ = ['create_views']
-
+#+begin_src python :noweb yes
 MPD_VIEW = """
 <<mpd-view>>
 """
 
+@task
 def create_views():
-    DBConn()
     DBConn.engine.execute(MPD_VIEW)
 #+end_src
-** =__init__.py=
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/mpd/__init__.py")
-from .save_library import *
-from .load_library import *
-from .load_logs import *
-from .postprocess import *
+
+** Flow
+
+Putting all this together:
+#+begin_src python
+@flow
+def load_mpd():
+    DBConn()
+    logger = get_run_logger()
+
+    load_library()
+    logs = get_logs_to_put()
+    logger.info(f'Found unprocessed logs: {len(logs)}')
+    for log in logs:
+        put_log(log)
+
+    create_views()
 #+end_src
-* CLI
+
+Execute the flow:
+#+begin_src python
+if __name__ == '__main__':
+    load_mpd()
+#+end_src
+
+* Deploy
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/mpd.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/mpd/deploy.py") :comments link
 :END:
-The CLI interface via click.
 
+Create the deployment:
 #+begin_src python
-import click
-from sqrt_data.parse import mpd as mpd_
+from prefect.deployments import Deployment
+from prefect.orion.schemas.schedules import CronSchedule
+
+from sqrt_data_service.api import settings
+from .flow import load_mpd
+
+def create_deploy():
+    deployment = Deployment.build_from_flow(
+        flow=load_mpd,
+        name="load-mpd",
+        work_queue_name=settings.prefect.queue,
+        schedule=(CronSchedule(cron="0 1 * * *"))
+    )
+    deployment.apply()
+
+if __name__ == '__main__':
+    create_deploy()
 #+end_src
 
-Export a click group named "mpd".
-#+begin_src python
-__all__ = ['mpd']
-
-@click.group(help='MPD stats')
-def mpd():
-    pass
+Run the following:
+#+begin_src bash :tangle no
+python -m sqrt_data_service.flows.mpd.deploy
 #+end_src
 
-Save the MPD library:
-#+begin_src python
-@mpd.command(help='Save the MPD library to the CSV format')
-def save_library():
-    mpd_.save_library()
-#+end_src
-
-Load the MPD library:
-#+begin_src python
-@mpd.command(help='Load the MPD library')
-def load_library():
-    mpd_.load_library()
-#+end_src
-
-Load the MPD logs:
-#+begin_src python
-@mpd.command(help='Load MPD logs')
-def load_logs():
-    mpd_.load_logs()
-#+end_src
-
-Create views
-#+begin_src python
-@mpd.command(help='Create views for Metabase')
-def create_views():
-    mpd_.create_views()
-#+end_src
+To create a deployment until I've found a better way.
