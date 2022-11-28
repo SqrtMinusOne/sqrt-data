@@ -6,7 +6,7 @@ Aggregating my YouTube history.
 
 | Type | Note                                                  |
 |------+-------------------------------------------------------|
-| TODO | Add proper commentary. Don't feel like doing that now |
+| TODO | Add the proper commentary. Don't feel like doing that now |
 
 * Sources
 ** MPV
@@ -851,7 +851,7 @@ def parse_newpipe_day(db, group):
         db.flush()
 #+end_src
 
-A function to do everything.
+The function to do everything.
 #+begin_src python
 def parse_newpipe():
     with HashDict() as h:

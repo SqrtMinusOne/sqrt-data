@@ -2,9 +2,9 @@
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
-Parsing the data from the [[https://sleep.urbandroid.org/][SleepAsAndroid]] app.
+Parsing data from the [[https://sleep.urbandroid.org/][SleepAsAndroid]] app.
 
-The data can be extracted from the app with the "Backup" option. The backup consists of three files, and the file with the actual data is called =sleep-export.csv=.
+Data can be extracted from the app with the "Backup" option. The backup consists of three files, of which the actual sleep data is =sleep-export.csv=.
 
 * Parse the data
 :PROPERTIES:
