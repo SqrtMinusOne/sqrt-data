@@ -1,11 +1,151 @@
 #+TITLE: ActivityWatch stats
+#+PROPERTY: header-args :mkdirp yes
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
 
 [[https://activitywatch.net/][ActivityWatch]] is a FOSS time tracker software.
 
+* Agent
+Usage:
+- Run =python -m sqrt_data_agent.aw= once a day
+
+** Saving (Desktop)
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_agent/aw.py") :comments link
+:END:
+The agent exports ActivityWatch "buckets" into CSV files.
+
+Some imports:
+#+begin_src python
+import socket
+import argparse
+import json
+import logging
+import os
+from collections import deque
+from datetime import datetime
+
+import pandas as pd
+import requests
+import furl
+
+from sqrt_data_agent.api import settings
+#+end_src
+
+Buckets have a lot of data, so I need to store the position in each bucket. A JSON file works fine for that.
+#+begin_src python
+def get_last_updated():
+    data = {}
+    if os.path.exists(os.path.expanduser(settings['aw']['last_updated'])):
+        with open(os.path.expanduser(settings['aw']['last_updated']), 'r') as f:
+            data = json.load(f)
+    # return data.get(f'last_updated-{get_hostname()}', None)
+    return data
+
+
+def save_last_updated(data):
+    os.makedirs(
+        os.path.dirname(os.path.expanduser(settings['aw']['last_updated'])),
+        exist_ok=True
+    )
+    hostname = socket.gethostname()
+    data[f'last_updated-{hostname}'] = datetime.now().isoformat()
+    with open(os.path.expanduser(settings['aw']['last_updated']), 'w') as f:
+        json.dump(data, f)
+#+end_src
+
+Next, make a DataFrame from the bucket:
+#+begin_src python
+def get_data(bucket_id, last_updated=None):
+    params = {}
+    api = settings['aw']['api']
+    if last_updated:
+        params['start'] = last_updated
+    r = requests.get(f'{api}/0/buckets/{bucket_id}')
+    bucket = r.json()
+    r = requests.get(f'{api}/0/buckets/{bucket_id}/events', params=params)
+    data = deque()
+    for event in r.json():
+        hostname = bucket['hostname']
+        if hostname == 'unknown':
+            hostname = socket.gethostname()
+        data.append(
+            {
+                'id': f"{bucket_id}-{event['id']}",
+                'bucket_id': bucket['id'],
+                'hostname': bucket['hostname'],
+                'duration': event['duration'],
+                'timestamp': pd.Timestamp(event['timestamp']),
+                **event['data']
+            }
+        )
+    if len(data) > 0:
+        df = pd.DataFrame(data)
+        df = df.set_index('id')
+        return df
+    return None
+#+end_src
+
+And perform this operation on all the required buckets.
+#+begin_src python
+def save_buckets(force=False):
+    last_updated = get_last_updated()
+    hostname = socket.gethostname()
+    last_updated_time = last_updated.get(f'last_updated-{hostname}', None)
+    if last_updated_time is not None:
+        last_updated_date = datetime.fromisoformat(last_updated_time).date()
+        if (datetime.now().date() == last_updated_date and not force):
+            logging.info('Already loaded AW today')
+            return
+    r = requests.get(f'{settings["aw"]["api"]}/0/buckets')
+    buckets = r.json()
+
+    os.makedirs(
+        os.path.expanduser(settings['aw']['logs_folder']), exist_ok=True
+    )
+    for bucket in buckets.values():
+        if not bucket['type'] in settings['aw']['types']:
+            continue
+        if 'aw-watcher-web' in bucket['id']:
+            last_updated_id = f'{bucket["id"]}-{socket.gethostname()}'
+        else:
+            last_updated_id = bucket['id']
+        if bucket['last_updated'] == last_updated.get(last_updated_id, None):
+            logging.info('Bucket %s already saved', bucket['id'])
+            continue
+        df = get_data(bucket['id'], last_updated.get(last_updated_id, None))
+        last_updated[last_updated_id] = bucket['last_updated']
+        if df is None:
+            logging.info('Bucket %s is empty', bucket['id'])
+            continue
+        bucket_type = bucket['type'].replace('.', '_')
+        hostname = bucket['hostname']
+        if hostname == 'unknown':
+            hostname = socket.gethostname()
+        filename = os.path.join(
+            os.path.expanduser(settings['aw']['logs_folder']),
+            f"{bucket_type}-{hostname}-{bucket['last_updated']}.csv"
+        )
+        df.to_csv(filename)
+        logging.info('Saved %s with %s events', filename, len(df))
+    save_last_updated(last_updated)
+#+end_src
+
+#+begin_src python
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        prog='sqrt_data_agent.aw'
+    )
+    parser.add_argument('-f', '--force', action='store_true')
+    args = parser.parse_args()
+    save_buckets(args.force)
+#+end_src
+
+** Saving (Android)
+I couldn't launch the desktop scripts on Android because of numpy, so I opted for manual export + syncing with [[https://play.google.com/store/apps/details?id=dk.tacit.android.foldersync.lite&hl=en&gl=US][FolderSync]] for now.
+
 * Models
-The [[https://docs.activitywatch.net/en/latest/buckets-and-events.html][data model]] in the program is pretty reasonable. The top-level entry is called "bucket", which has the following attributes:
+The [[https://docs.activitywatch.net/en/latest/buckets-and-events.html][data model]] in the program is pretty reasonable. The top-level entity is called "bucket" and has the following attributes:
 - =id=
 - =created= - creation date
 - =name=
@@ -19,35 +159,37 @@ One event has the following attributes:
 - =duration= - duration in seconds
 - =data= - a dictionary with details about the event.
 
-As of now, there are 4 default desktop event types with the following structure of the =data= fields, which are quite self-descriptive:
-- =afkstatus=
+The set of buckets on each machine is dependent on a particular setup. I'm interested in the following types on Desktop:
+- =afkstatus= (=aw-watcher-afk=)
   - =status= - "afk" or "not-afk"
-- =currentwindow=
+- =currentwindow= (=aw-watcher-currentwindow=)
   - =app=
   - =title=
-- =app.editor.activity=
+- =app.editor.activity= ([[https://sqrtminusone.xyz/configs/emacs/#activitywatch][activity-watch-mode]])
   - =file=
   - =project=
   - =language=
-- =web.tab.current=
+- =web.tab.current= ([[https://github.com/ActivityWatch/aw-watcher-web][aw-watcher-web]])
   - =url=
   - =title=
   - =audible=
   - =incognito=
   - =tabCount=
-And 2 event types on Android:
+And in the following types on Android.
 - =os.lockscreen.unlocks= - no data
 - =currentwindow=
   - =app=
   - =classname=
   - =package=
 
-I also add a =location= field.
+Also (thanks [[https://github.com/ErikBjare][Erik]] for the comment), AW stores timestamps in the UTC format, so I add the =location= field to convert the timestamps as necessary.
 
 ** Source models
-So, I want to save this structure to my PostgreSQL database. I decided to break 3NF and use one table for each bucket type. So, here is a common model:
+I don't get to use model inheritance all to often, but seems like it's one case.
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/bucket.py")
+Here's the general model:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/bucket.py")
 import sqlalchemy as sa
 from sqrt_data.models import Base
 
@@ -69,9 +211,8 @@ class Bucket(Base):
     duration = sa.Column(sa.Float(), nullable=False)
 #+end_src
 
-And here are the models for particular bucket types:
-
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/afkstatus.py")
+And here are the models for specific bucket types:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/afkstatus.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -84,7 +225,7 @@ class AfkStatus(Bucket):
     status = sa.Column(sa.Boolean(), nullable=False)
 #+end_src
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/currentwindow.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/currentwindow.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -98,7 +239,7 @@ class CurrentWindow(Bucket):
     title = sa.Column(sa.Text(), nullable=False)
 #+end_src
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/appeditor.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/appeditor.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -113,7 +254,7 @@ class AppEditor(Bucket):
     language = sa.Column(sa.Text(), nullable=False)
 #+end_src
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/webtab.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/webtab.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -132,7 +273,7 @@ class WebTab(Bucket):
     tab_count = sa.Column(sa.Integer(), nullable=True)
 #+end_src
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/android_unlock.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/android_unlock.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -143,7 +284,7 @@ class AndroidUnlock(Bucket):
     __table_args__ = {'schema': 'aw'}
 #+end_src
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/android_currentwindow.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/android_currentwindow.py")
 import sqlalchemy as sa
 from .bucket import Bucket
 
@@ -159,7 +300,7 @@ class AndroidCurrentWindow(Bucket):
 #+end_src
 
 The corresponding =__init__.py=:
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/models/aw/__init__.py")
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/__init__.py")
 from .bucket import *
 from .afkstatus import *
 from .currentwindow import *
@@ -168,144 +309,12 @@ from .webtab import *
 from .android_unlock import *
 from .android_currentwindow import *
 #+end_src
-* Data
+* Flows
 The corresponding =__init__.py=:
 
-#+begin_src python :tangle (my/org-prj-dir "sqrt_data/parse/aw/__init__.py") :comments link
-from .save import *
-from .load import *
-from .load_android import *
-from .postprocess import *
-#+end_src
-** Saving (Desktop)
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/save.py") :comments link
-:END:
-As usual, first, we need to export the data from ActivityWatch to CSV format.
-
-The required imports:
-#+begin_src python
-import socket
-import json
-import logging
-import os
-from collections import deque
-from datetime import datetime
-
-import pandas as pd
-import requests
-import furl
-
-from sqrt_data.api import settings, get_hostname
-#+end_src
-
-The only exported function is =save_buckets=:
-#+begin_src python
-__all__ = ['save_buckets']
-#+end_src
-
-Buckets have a lot of data, so we need to somehow save the point of the last download. That seems to be fine to persist in a JSON file.
-
-#+begin_src python
-def get_last_updated():
-    data = {}
-    if os.path.exists(os.path.expanduser(settings['aw']['last_updated'])):
-        with open(os.path.expanduser(settings['aw']['last_updated']), 'r') as f:
-            data = json.load(f)
-    # return data.get(f'last_updated-{get_hostname()}', None)
-    return data
-
-
-def save_last_updated(data):
-    os.makedirs(
-        os.path.dirname(os.path.expanduser(settings['aw']['last_updated'])),
-        exist_ok=True
-    )
-    data[f'last_updated-{get_hostname()}'] = datetime.now().isoformat()
-    with open(os.path.expanduser(settings['aw']['last_updated']), 'w') as f:
-        json.dump(data, f)
-#+end_src
-
-Next, get the data from the bucket and put it to a DataFrame:
-#+begin_src python
-def get_data(bucket_id, last_updated=None):
-    params = {}
-    api = settings['aw']['api']
-    if last_updated:
-        params['start'] = last_updated
-    r = requests.get(f'{api}/0/buckets/{bucket_id}')
-    bucket = r.json()
-    r = requests.get(f'{api}/0/buckets/{bucket_id}/events', params=params)
-    data = deque()
-    for event in r.json():
-        hostname = bucket['hostname']
-        if hostname == 'unknown':
-            hostname = get_hostname()
-        data.append(
-            {
-                'id': f"{bucket_id}-{event['id']}",
-                'bucket_id': bucket['id'],
-                'hostname': bucket['hostname'],
-                'duration': event['duration'],
-                'timestamp': pd.Timestamp(event['timestamp']),
-                **event['data']
-            }
-        )
-    if len(data) > 0:
-        df = pd.DataFrame(data)
-        df = df.set_index('id')
-        return df
-    return None
-#+end_src
-
-Finally, a function to perform this operation on all the available buckets. I also want to function to run once per day to avoid creating too many files, so there is a simple limiter.
-#+begin_src python
-def save_buckets(force=False):
-    last_updated = get_last_updated()
-    last_updated_time = last_updated.get(f'last_updated-{get_hostname()}', None)
-    if last_updated_time is not None:
-        last_updated_date = datetime.fromisoformat(last_updated_time).date()
-        if (datetime.now().date() == last_updated_date and not force):
-            logging.info('Already loaded AW today')
-            return
-    r = requests.get(f'{settings["aw"]["api"]}/0/buckets')
-    buckets = r.json()
-
-    os.makedirs(
-        os.path.expanduser(settings['aw']['logs_folder']), exist_ok=True
-    )
-    for bucket in buckets.values():
-        if not bucket['type'] in settings['aw']['types']:
-            continue
-        if 'aw-watcher-web' in bucket['id']:
-            last_updated_id = f'{bucket["id"]}-{get_hostname()}'
-        else:
-            last_updated_id = bucket['id']
-        if bucket['last_updated'] == last_updated.get(last_updated_id, None):
-            logging.info('Bucket %s already saved', bucket['id'])
-            continue
-        df = get_data(bucket['id'], last_updated.get(last_updated_id, None))
-        last_updated[last_updated_id] = bucket['last_updated']
-        if df is None:
-            logging.info('Bucket %s is empty', bucket['id'])
-            continue
-        bucket_type = bucket['type'].replace('.', '_')
-        hostname = bucket['hostname']
-        if hostname == 'unknown':
-            hostname = get_hostname()
-        filename = os.path.join(
-            os.path.expanduser(settings['aw']['logs_folder']),
-            f"{bucket_type}-{hostname}-{bucket['last_updated']}.csv"
-        )
-        df.to_csv(filename)
-        logging.info('Saved %s with %s events', filename, len(df))
-    save_last_updated(last_updated)
-#+end_src
-** Saving (Android)
-I tried to launch desktop scripts on termux, but had issues with compiling numpy. In the end, I decided that it will be easier to manually save files from the mobile ActivityWatch and sync them with [[https://play.google.com/store/apps/details?id=dk.tacit.android.foldersync.lite&hl=en&gl=US][FolderSync]].
 ** Loading (Dekstop)
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/load.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/load.py") :comments link
 :END:
 The required imports:
 #+begin_src python
@@ -317,30 +326,29 @@ import os
 import re
 import logging
 
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
-from sqrt_data.api import settings, DBConn, HashDict
-from sqrt_data.models import Base
-from sqrt_data.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
-from sqrt_data.parse.locations import LocationMatcher
-#+end_src
-
-The only exported function is the one that performs the loading:
-#+begin_src python
-__all__ = ['load']
+from sqrt_data_service.api import settings, DBConn, FileHasher
+from sqrt_data_service.models import Base
+from sqrt_data_service.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
+from sqrt_data_service.common.locations import LocationMatcher
 #+end_src
 
 Get all the dataframes to load:
 #+begin_src python
-def get_dataframes(h):
+@task(name='aw-desktop-get-dataframes')
+def get_dataframes(db):
+    logger = get_run_logger()
     files = glob.glob(
         f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
     )
     dfs_by_type = {}
     files_by_type = {}
+    hasher = FileHasher()
     for f in files:
-        if not h.is_updated(f):
+        if not hasher.is_updated(f, db):
             continue
         try:
             df = pd.read_csv(f, lineterminator='\n', index_col=False)
@@ -354,11 +362,9 @@ def get_dataframes(h):
         except KeyError:
             dfs_by_type[type_] = [df]
             files_by_type[type_] = [f]
-        h.save_hash(f)
+        hasher.save_hash(f, db)
     for type, files in files_by_type.items():
-        print(f'Type: {type}')
-        print('Files')
-        print("\n".join(files))
+        logger.info(f'{type}: {"; ".join(files)}')
     return dfs_by_type
 #+end_src
 
@@ -372,11 +378,10 @@ MODELS = {
 }
 #+end_src
 
-Pre-processing the records. ActivityWatch saves all the timestamps with 0 UTC offset, so I here set the timestamps back to their original timezone.
-
-And a few other fixes.
+Preprocessing the records.
 
 #+begin_src python
+@task(name='aw-desktop-get-records')
 def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
@@ -407,25 +412,41 @@ def get_records(type_, df):
     return df.to_dict(orient='records')
 #+end_src
 
-And perform the loading:
+Insert data:
 #+begin_src python
-def load():
+@task(name='aw-desktop-insert-data')
+def insert_data(type_, entries, db):
+    db.execute(
+        pg_insert(MODELS[type_]).values(entries).on_conflict_do_nothing()
+    )
+#+end_src
+
+The flow to perform the loading:
+#+begin_src python
+@flow
+def aw_load_desktop():
     DBConn()
     DBConn.create_schema('aw', Base)
-    with HashDict() as h:
-        dfs_by_type = get_dataframes(h)
+    logger = get_run_logger()
+    with DBConn.get_session() as db:
+        dfs_by_type = get_dataframes(db)
 
-        with DBConn.get_session() as db:
-            for type_, dfs in tqdm(dfs_by_type.items()):
-                for df in dfs:
-                    entries = get_records(type_, df)
-                    db.execute(insert(MODELS[type_]).values(entries).on_conflict_do_nothing())
-            db.commit()
-        h.commit()
+        for type_, dfs in tqdm(dfs_by_type.items()):
+            for df in dfs:
+                entries = get_records(type_, df)
+                insert_data(type_, entries, db)
+                logger.info(f'Inserted {len(entries)} records of type "{type_}"')
+        db.commit()
+#+end_src
+
+Execute the flow:
+#+begin_src python
+if __name__ == '__main__':
+    aw_load_desktop()
 #+end_src
 ** Loading (Android)
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/load_android.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/load_android.py") :comments link
 :END:
 As long as I have only one Android phone where I have ActivityWatch installed, I work with just one JSON file.
 
@@ -435,22 +456,21 @@ import json
 import pandas as pd
 
 from tqdm import tqdm
+from prefect import task, flow, get_run_logger
 
-from sqrt_data.api import settings, DBConn, HashDict
-from sqrt_data.models import Base
-from sqrt_data.parse.locations import LocationMatcher
+from sqrt_data_service.api import settings, DBConn, FileHasher
+from sqrt_data_service.models import Base
+from sqrt_data_service.common.locations import LocationMatcher
 #+end_src
 
-The only exported function is the one that performs the loading:
+The function to get dataframes from the JSON file:
 #+begin_src python
-__all__ = ['load_android']
-#+end_src
-
-A function to get dataframes from the JSON file:
-#+begin_src python
-def get_dataframes(h):
-    if not h.is_updated(settings["aw"]["android_file"]):
-        print('Android already loaded')
+@task(name='aw-android-get-dataframes')
+def get_dataframes(db):
+    logger = get_run_logger()
+    hasher = FileHasher()
+    if not hasher.is_updated(settings["aw"]["android_file"], db):
+        logger.info('Android already loaded')
         return
     dfs_by_type = {}
     with open(settings["aw"]["android_file"], 'r') as f:
@@ -476,6 +496,7 @@ def get_dataframes(h):
 
 Also pre-processing the records.
 #+begin_src python
+@task(name='aw-android-get-records')
 def get_records(type_, df):
     loc = LocationMatcher()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -487,19 +508,24 @@ def get_records(type_, df):
     return df
 #+end_src
 
-And a function to put everything to the database:
+And the flow:
 #+begin_src python
 TABLE_NAMES = {
     'os.lockscreen.unlocks': 'android_unlock',
     'currentwindow': 'android_currentwindow'
 }
 
-def load_android():
+@flow
+def aw_load_android():
     DBConn()
     DBConn.create_schema('aw', Base)
 
-    with HashDict() as h:
-        dfs_by_type = get_dataframes(h)
+    hasher = FileHasher()
+    with DBConn.get_session() as db:
+        dfs_by_type = get_dataframes(db)
+
+        if dfs_by_type is None:
+            return
 
         for type_, df in tqdm(dfs_by_type.items()):
             df = get_records(type_, df)
@@ -510,20 +536,28 @@ def load_android():
                 if_exists='replace'
             )
             print(df)
-        h.save_hash(settings["aw"]["android_file"])
-        h.commit()
+        hasher.save_hash(settings["aw"]["android_file"])
+        db.commit()
+#+end_src
+
+Execute the flow:
+#+begin_src python
+if __name__ == '__main__':
+    aw_load_android()
 #+end_src
 ** Postprocessing
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/parse/aw/postprocess.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/postprocessing.py") :comments link
 :header-args:sql: :noweb-ref postprocess-sql
 :END:
 
-Because the data from ActivityWatch is somewhat scattered, the following postprocessing is necessary:
+The postprocessing logic turned out to be rather complex... But well.
+
+One issue is that data from ActivityWatch is somewhat scattered, so the following operations are necessary:
 1. filter active windows by not-afk status
 2. filter active browser tabs by not-afk status & active browser window
 
-And because there is a lot of data, some pre-aggregation is necessary to avoid loading the database in live mode. I've considered implementing this part in Python but decided that PL/pgSQL would be easier.
+Also, there's a lot of data, so some pre-aggregation is necessary. Ended up implementing this in PL/pgSQL for some reason.
 
 So first, initialize the tables the first level of post-processed data:
 #+begin_src sql
@@ -558,11 +592,11 @@ $$;
 #+end_src
 
 Next, filter the list of active windows. If:
-- an interval of using a program overlaps with an interval of being non-afk
-- an interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with an interval of being afk less than =aw.skip_afk_interval=
+- the interval of using a program overlaps with the interval of being non-afk, or
+- the interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with the interval of being afk less than =aw.skip_afk_interval=
 add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
 
-After some time, I decided to add the invervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, an auxililary function to check the AFK status:
+After some time, I've decided to add the invervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, the function to check the AFK status:
 #+begin_src sql
 drop function if exists aw.is_afk;
 create function aw.is_afk(status bool, duration float, app text, title text) returns bool
@@ -576,7 +610,8 @@ end;
 $$;
 #+end_src
 
-I've reimplemented this part a few times, and the most elegant way seems to be doing a join on the =overlaps= operator. CTEs are meant to increase the performance because otherwise doing such a join on tables with around a million records is quite expensive.
+I iterated through a few implementations of this part, and the most elegant way seems to be to do a join on the =overlaps= operator. CTEs are meant to increase the performance, because otherwise doing such a join on tables with around a million records is quite expensive.
+
 #+begin_src sql
 drop function if exists aw.get_notafkwindow;
 create function aw.get_notafkwindow(start_date timestamp, end_date timestamp)
@@ -601,7 +636,7 @@ begin
                extract(epoch from
                        least(C.timestamp + C.duration * interval '1 second',
                              A.timestamp + A.duration * interval '1 second') -
-                       greatest(A.timestamp, C.timestamp))                                                        duration,
+                       greatest(A.timestamp, C.timestamp))::double precision                                      duration,
                case
                    when aw.is_afk(A.status, A.duration, app, title) then C.app
                    else 'AFK' end       as                                                                        app,
@@ -618,13 +653,11 @@ end;
 $$;
 #+end_src
 
-Finally, we have to put all of that into the table. Previously, I had a materialized view that was refreshed every 24 hours, but it took 15-30 minutes to do the refresh precisely because the join is expensive.
+And store all of that into the final table. I used to have a materialized view here, but it doesn't scale well, so I've ended up doing day-by-day processing.
 
-With that in mind, I've made a scheme where the data is preprocessed day by day only for unprocessed days. The day is considered unprocessed if the number of records in a day is changed.
+The view to get the list of unprocessed days resides in =init_postprocessing=.
 
-This turned out to be much faster, and even the full processing with that approach started to take just 20-30 seconds, so persisting whether the day was processed is not quite necessary. But I'll let it be like this as long it works.
-
-The view to get the list of unprocessed days resides in =init_postprocessing=. The procedure to perform the processing:
+The procedure to perform the processing:
 #+begin_src sql
 drop procedure if exists aw.postprocess_notafkwindow;
 create procedure aw.postprocess_notafkwindow()
@@ -714,17 +747,14 @@ $$;
 
 The Python part sets the database settings from the configuration file and executes the stuff above. I wanted to make a separate .sql file for that, but that would make packaging more complicated, so here goes noweb.
 #+begin_src python :noweb yes
-from sqrt_data.api import settings, DBConn
-
-__all__ = [
-    'postprocessing_set_sql', 'postprocessing_init', 'postprocessing_dispatch'
-]
+from prefect import task, flow, get_run_logger
+from sqrt_data_service.api import settings, DBConn
 
 SQL = """
 <<postprocess-sql>>
 """
 
-
+@task
 def update_settings(db):
     db.execute(
         f"""
@@ -737,23 +767,19 @@ def update_settings(db):
     )
 
 
-def postprocessing_set_sql():
+@flow
+def aw_postprocessing_init():
     DBConn()
     with DBConn.get_session() as db:
-        update_settings(db)
         db.execute(SQL)
-        db.commit()
-
-def postprocessing_init():
-    DBConn()
-    with DBConn.get_session() as db:
         update_settings(db)
         db.execute("CALL aw.init_postprocessing();")
         db.execute("CALL aw.create_afkwindow_views();")
         db.execute("CALL aw.create_browser_views();")
         db.commit()
 
-def postprocessing_dispatch():
+@flow
+def aw_postprocessing_dispatch():
     DBConn()
     with DBConn.get_session() as db:
         update_settings(db)
@@ -763,53 +789,30 @@ def postprocessing_dispatch():
         db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
         db.commit()
 #+end_src
-* CLI
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data/cli/aw.py") :comments link
-:END:
-The CLI interface via click.
+** Final flow
+Thw flow that executes all other flows.
 
-#+begin_src python
-import click
-from sqrt_data.parse import aw as aw_
-#+end_src
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/main.py") :comments link
+import argparse
+from prefect import flow
 
-Export a click group named "mpd".
-#+begin_src python
-__all__ = ['aw']
+from .load import aw_load_desktop
+from .load_android import aw_load_android
+from .postprocessing import aw_postprocessing_init, aw_postprocessing_dispatch
 
-@click.group(help='ActivityWatch stats')
-def aw():
-    pass
-#+end_src
+@flow
+def aw_process(init=False):
+    aw_load_desktop()
+    aw_load_android()
+    if init:
+        aw_postprocessing_init()
+    aw_postprocessing_dispatch()
 
-Save and load the buckets:
-#+begin_src python
-@aw.command(help='Save ActivityWatch buckets')
-@click.option('--force', '-f', is_flag=True)
-def save_buckets(force):
-    aw_.save_buckets(force)
-
-@aw.command(help='Load ActivityWatch buckets')
-def load():
-    aw_.load()
-
-@aw.command(help='Load ActivityWatch Android buckets')
-def load_android():
-    aw_.load_android()
-#+end_src
-
-Posprocessing commands:
-#+begin_src python
-@aw.command(help='Set or update SQL definitions for postprocessing')
-def postprocessing_set_sql():
-    aw_.postprocessing_set_sql()
-
-@aw.command(help='Initialize postprocessing')
-def postprocessing_init():
-    aw_.postprocessing_init()
-
-@aw.command(help='Perform postprocessing')
-def postprocessing_dispatch():
-    aw_.postprocessing_dispatch()
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        prog='sqrt_data_service.flows.aw.main'
+    )
+    parser.add_argument('-i', '--init', action='store_true')
+    args = parser.parse_args()
+    aw_process(args.init)
 #+end_src

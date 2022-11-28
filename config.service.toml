@@ -23,3 +23,25 @@ schema = 'wakatime'
 [mpd]
 library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
 log_folder = '@format {this.general.root}/mpd/logs'
+
+[aw]
+last_updated = '@format {this.general.root}/aw_last_updated.json'
+logs_folder = '@format {this.general.root}/aw'
+android_file = '@format {this.general.root}/android-misc/aw-buckets-export.json'
+types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
+schema = 'aw'
+skip_afk_interval = '900'
+skip_afk_apps = '^(zoom|mpv)$'
+skip_afk_titles = '(YouTube)'
+webtab_apps = '^(Nightly|firefox)$'
+skip_urls = '^(moz-extension|about:blank)'
+
+[aw.apps_convert]
+Nightly = 'firefox'
+Chromium-browser = 'Chromium'
+unknown = 'Emacs' # EXWM
+
+[location]
+list_csv = '@format {this.general.root}/csv/locations.csv'
+tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
+hostnames_csv = '@format {this.general.root}/csv/loc_hostnames.csv'

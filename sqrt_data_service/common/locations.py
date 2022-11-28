@@ -1,33 +1,4 @@
-#+TITLE: Locations
-#+PROPERTY: header-args :mkdirp yes
-#+PROPERTY: header-args:python :comments link
-#+PROPERTY: PRJ-DIR ..
-
-Working with my location history. I don't move around too much, but it's still interesting to add that datapoint.
-
-Also, [[file:aw.org][ActivityWatch]] and some other apps store the timestamps in UTC, so this data is required to fix the timezone.
-
-Storing this is the database won't be convinient, so I just manage a handful of [[https://sqrtminusone.xyz/configs/emacs/#managing-tables][CSV files with Org Mode]].
-
-* Matching locations
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/common/locations.py") :comments link
-:END:
-
-The structure of CSV files is as follows:
-- =tz_csv=
-  - =location= - location string (e.g. Saint-Petersburg)
-  - =timezone= - timezone (e.g. "+3")
-- =list_csv=
-  - =start_time=
-  - =location= - location from =tz_csv=
-- =loc_hostnames=
-  - =hostname=
-  - =location= - location from =tz_csv=
-
-The class is meant to throw errors in case there is a mismatch somewhere.
-
-#+begin_src python
+# [[file:../../org/locations.org::*Matching locations][Matching locations:1]]
 import pandas as pd
 
 from datetime import timedelta
@@ -78,4 +49,4 @@ class LocationMatcher:
 
 if __name__ == '__main__':
     LocationMatcher()
-#+end_src
+# Matching locations:1 ends here
