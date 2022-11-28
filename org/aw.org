@@ -766,6 +766,19 @@ def update_settings(db):
     """
     )
 
+@task
+def init_postprocessing(db):
+    db.execute("CALL aw.init_postprocessing();")
+
+@task
+def create_afkwindow_views(db):
+    db.execute("CALL aw.create_afkwindow_views();")
+
+
+@task
+def create_browser_views(db):
+    db.execute("CALL aw.create_browser_views();")
+
 
 @flow
 def aw_postprocessing_init():
@@ -773,20 +786,32 @@ def aw_postprocessing_init():
     with DBConn.get_session() as db:
         db.execute(SQL)
         update_settings(db)
-        db.execute("CALL aw.init_postprocessing();")
-        db.execute("CALL aw.create_afkwindow_views();")
-        db.execute("CALL aw.create_browser_views();")
+        init_postprocessing(db)
+        create_afkwindow_views(db)
+        # create_browser_views
         db.commit()
+
+@task
+def postprocess_notafkwindow(db):
+    db.execute("CALL aw.postprocess_notafkwindow();")
+
+@task
+def refresh_notafkwindow(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+
+@task
+def refresh_webtab(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
 
 @flow
 def aw_postprocessing_dispatch():
     DBConn()
     with DBConn.get_session() as db:
         update_settings(db)
-        db.execute("CALL aw.postprocess_notafkwindow();")
-        db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
-        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
-        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
+        postprocess_notafkwindow(db)
+        refresh_notafkwindow(db)
+        # refresh_webtab(db)
         db.commit()
 #+end_src
 ** Final flow
@@ -816,3 +841,37 @@ if __name__ == '__main__':
     args = parser.parse_args()
     aw_process(args.init)
 #+end_src
+
+* Deploy
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/deploy.py") :comments link
+:END:
+
+Create the deployment:
+#+begin_src python
+from prefect.deployments import Deployment
+from prefect.orion.schemas.schedules import CronSchedule
+
+from sqrt_data_service.api import settings
+from .main import aw_process
+
+def create_deploy():
+    deployment = Deployment.build_from_flow(
+        flow=aw_process,
+        name="aw-process",
+        work_queue_name=settings.prefect.queue,
+        schedule=(CronSchedule(cron="0 3 * * *")),
+        parameters={"init": False}
+    )
+    deployment.apply()
+
+if __name__ == '__main__':
+    create_deploy()
+#+end_src
+
+Run the following:
+#+begin_src bash :tangle no
+python -m sqrt_data_service.flows.aw.deploy
+#+end_src
+
+To create a deployment until I've found a better way.

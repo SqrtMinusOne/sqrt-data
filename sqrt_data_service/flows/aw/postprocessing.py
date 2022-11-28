@@ -167,6 +167,19 @@ def update_settings(db):
     """
     )
 
+@task
+def init_postprocessing(db):
+    db.execute("CALL aw.init_postprocessing();")
+
+@task
+def create_afkwindow_views(db):
+    db.execute("CALL aw.create_afkwindow_views();")
+
+
+@task
+def create_browser_views(db):
+    db.execute("CALL aw.create_browser_views();")
+
 
 @flow
 def aw_postprocessing_init():
@@ -174,19 +187,31 @@ def aw_postprocessing_init():
     with DBConn.get_session() as db:
         db.execute(SQL)
         update_settings(db)
-        db.execute("CALL aw.init_postprocessing();")
-        db.execute("CALL aw.create_afkwindow_views();")
-        db.execute("CALL aw.create_browser_views();")
+        init_postprocessing(db)
+        create_afkwindow_views(db)
+        # create_browser_views
         db.commit()
+
+@task
+def postprocess_notafkwindow(db):
+    db.execute("CALL aw.postprocess_notafkwindow();")
+
+@task
+def refresh_notafkwindow(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+
+@task
+def refresh_webtab(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
 
 @flow
 def aw_postprocessing_dispatch():
     DBConn()
     with DBConn.get_session() as db:
         update_settings(db)
-        db.execute("CALL aw.postprocess_notafkwindow();")
-        db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
-        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
-        db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
+        postprocess_notafkwindow(db)
+        refresh_notafkwindow(db)
+        # refresh_webtab(db)
         db.commit()
 # Postprocessing:7 ends here
