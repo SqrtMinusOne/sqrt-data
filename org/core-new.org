@@ -85,6 +85,10 @@ Nightly = 'firefox'
 Chromium-browser = 'Chromium'
 unknown = 'Emacs' # EXWM
 
+[vk]
+author = 'Pavel Korytov'
+schema = 'vk'
+
 [location]
 list_csv = '@format {this.general.root}/csv/locations.csv'
 tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
