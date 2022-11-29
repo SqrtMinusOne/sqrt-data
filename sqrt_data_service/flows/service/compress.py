@@ -1,16 +1,4 @@
-#+TITLE: Service
-#+PROPERTY: header-args :mkdirp yes
-#+PROPERTY: header-args:python :comments link
-#+PROPERTY: PRJ-DIR ..
-
-* Compression
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/service/compress.py") :comments link
-:END:
-As the data gets transferred between machines via CSV files, it is reasonable to compress the old ones.
-
-The required imports:
-#+begin_src python
+# [[file:../../../org/service.org::*Compression][Compression:1]]
 import json
 import os
 import pathlib
@@ -23,17 +11,14 @@ import sqlalchemy as sa
 
 from sqrt_data_service.api import settings, DBConn
 from sqrt_data_service.models import FileHash
-#+end_src
+# Compression:1 ends here
 
-So, first we need to group files by dates. When the group is full, it is to be compressed.
-
-#+begin_src python
+# [[file:../../../org/service.org::*Compression][Compression:2]]
 def get_date_group(timestamp):
     return timestamp // (60 * 60 * 24 * settings['archive']['days'])
-#+end_src
+# Compression:2 ends here
 
-The group is full if there is no chance of a file with this the today's timestamp appearing in that group:
-#+begin_src python
+# [[file:../../../org/service.org::*Compression][Compression:3]]
 @task
 def get_files_to_compress():
     with DBConn.get_session() as db:
@@ -66,10 +51,9 @@ def get_files_to_compress():
         for (date_group, dir), g in df.groupby(['date_group', 'dir'])
         if dir not in settings['archive']['exclude_dirs']
     ]
-#+end_src
+# Compression:3 ends here
 
-And the function to archive the files according the grouping:
-#+begin_src python
+# [[file:../../../org/service.org::*Compression][Compression:4]]
 @task
 def compress(groups):
     logger = get_run_logger()
@@ -91,7 +75,7 @@ def compress(groups):
             subprocess.run(
                 [
                     'tar', '-czvf', archive_name, '--remove-files',
-                    ,*[os.path.relpath(f, dir) for f in files]
+                    *[os.path.relpath(f, dir) for f in files]
                 ],
                 check=True,
                 cwd=dir
@@ -101,10 +85,9 @@ def compress(groups):
                 db.execute(sa.delete(FileHash).where(FileHash.file_name == f))
                 logger.info('Removed %s from HashDict', f)
         db.commit()
-#+end_src
+# Compression:4 ends here
 
-The flow:
-#+begin_src python
+# [[file:../../../org/service.org::*Compression][Compression:5]]
 @flow
 def archive():
     DBConn()
@@ -114,37 +97,4 @@ def archive():
 
 if __name__ == '__main__':
     archive()
-#+end_src
-
-* Deploy
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/service/deploy.py") :comments link
-:END:
-
-Create the deployment:
-#+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
-
-from sqrt_data_service.api import settings
-from .compress import archive
-
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=archive,
-        name="archive",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 5 * * *"))
-    )
-    deployment.apply()
-
-if __name__ == '__main__':
-    create_deploy()
-#+end_src
-
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.service.deploy
-#+end_src
-
-To create a deployment until I've found a better way.
+# Compression:5 ends here

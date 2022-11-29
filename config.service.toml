@@ -15,6 +15,11 @@ cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
 [prefect]
 queue = 'main'
 
+[archive]
+days = 31
+timeout = 5
+exclude_dirs = ['@format {this.general.root}/android-misc', '@format {this.general.root}/youtube']
+
 [waka]
 api_key = 'dummy'
 api_url = 'https://wakatime.com/api/v1'
