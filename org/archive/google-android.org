@@ -4,7 +4,7 @@
 
 Parsing Android activity data from [[https://takeout.google.com/settings/takeout?pli=1][Google Takeout]]. I don't use it anymore, as ActivityWatch for Android provides more detailed data (and doesn't share it with Google).
 
-So this is kept here for historic purposes more than anything else.
+So this is kept here for historic purposes and not much else.
 
 * Parsing
 :PROPERTIES:

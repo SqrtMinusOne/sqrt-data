@@ -561,6 +561,108 @@ last_updated = '@format {this.general.root}/aw_last_updated.json'
 logs_folder = '@format {this.general.root}/aw'
 types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
 api = 'http://localhost:5600/api'
+
+[sync]
+log_file = '@format {this.general.root}/sync.log'
+target = 'ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync'
+#+end_src
+
+** Sync
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data_agent/sync.py")
+:END:
+Synchronizing the =logs-sync= folder between client machines and the server.
+
+Previously, this was a bash script, but I've converted in to Python for Guix packaging purposes.
+
+I use [[https://github.com/deajan/osync][osync]] as the sync engine. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+
+#+begin_src python
+import argparse
+import os
+import subprocess
+import socket
+from datetime import datetime
+
+from sqrt_data_agent.api import settings
+from .aw import save_buckets
+from .mpd_save_library import save_library
+#+end_src
+
+All the dependencies are written down like this to make packaging easier:
+#+begin_src python
+EXEC_OSYNC = 'osync.sh'
+EXEC_NOTIFY_SEND = 'notify-send'
+#+end_src
+The idea is that the names will be replaced by full paths in the Guix recipe.
+
+I want the sync run only once a day on a given hostname. To do that, I write the following string to the =sync.log_file= after a successful synchronization:
+
+#+begin_src python
+def log_string():
+    date_string = datetime.strftime(datetime.now(), "%Y-%m-%d")
+    return f'{socket.gethostname()}: {date_string}'
+#+end_src
+
+Check if that string exists in the file:
+#+begin_src python
+def check_today_sync():
+    if not os.path.exists(settings.sync.log_file):
+        return False
+    string = log_string()
+    with open(settings.sync.log_file, 'r') as f:
+        for line in f:
+            if line.strip() == string:
+                return True
+    return False
+#+end_src
+
+And append that string to the file:
+#+begin_src python
+def set_today_sync():
+    with open(settings.sync.log_file, 'a') as f:
+        f.write(log_string() + '\n')
+#+end_src
+
+Now, performing the actual sync.
+#+begin_src python
+def sync_logs(force=False):
+    if not force and check_today_sync():
+        print('Already synced today!')
+        return
+    save_library()
+    save_buckets(force)
+    subprocess.run(
+        [
+            EXEC_OSYNC, f'--initiator={settings.general.root}',
+            f'--target={settings.sync.target}'
+        ],
+        env={
+            **os.environ,
+            'RSYNC_EXCLUDE_PATTERN': 'sync.log',
+            'CREATE_DIRS': 'yes',
+            'REMOTE_HOST_PING': 'false',
+            'PATH': os.environ['PATH']
+        },
+        check=True
+    )
+    if not is_android():
+        subprocess.run(
+            [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
+            env={'DISPLAY': ':0', **os.environ}
+        )
+    set_today_sync()
+#+end_src
+
+And a simple CLI with =argparse=:
+#+begin_src python
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        prog='sqrt_data_agent.aw'
+    )
+    parser.add_argument('-f', '--force', action='store_true')
+    args = parser.parse_args()
+    sync_logs(args.force)
 #+end_src
 
 * Deploy
@@ -568,4 +670,9 @@ api = 'http://localhost:5600/api'
 Run the following as services:
 #+begin_src bash
 python -m sqrt_data_agent.mpd
+#+end_src
+
+And run that with cron every hour:
+#+begin_src bash
+python -m sqrt_data_agent.sync
 #+end_src
