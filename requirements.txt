@@ -1,5 +1,5 @@
 dynaconf==3.1.11
-sqlalchemy>=2.0.0b3
+sqlalchemy>=1.4
 psycopg2-binary
 alembic
 click==8.1.3

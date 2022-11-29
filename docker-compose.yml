@@ -54,10 +54,8 @@ services:
             PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
 
     sqrt_data_agent:
-        container_name: "sqrt-data-orion"
+        container_name: "sqrt-data-agent"
         build: .
-        ports:
-            - 127.0.0.1:4200:4200
         restart: unless-stopped
         networks:
             - postgres
