@@ -1,13 +1,12 @@
 dynaconf==3.1.11
-sqlalchemy==2.0.0b3
+sqlalchemy>=2.0.0b3
 psycopg2-binary
-alembic==1.8.1
+alembic
 click==8.1.3
 furl==2.1.3
 tldextract==3.4.0
 pandas==1.5.1
 numpy==1.23.4
-prefect==2.6.8
 tqdm==4.64.1
 beautifulsoup4==4.11.1
 python-dateutil==2.8.2
