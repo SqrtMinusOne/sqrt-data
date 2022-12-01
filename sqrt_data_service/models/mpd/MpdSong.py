@@ -1,6 +1,6 @@
 # [[file:../../../org/mpd.org::*Models][Models:1]]
 import sqlalchemy as sa
-from sqrt_data.models import Base
+from sqrt_data_service.models import Base
 
 __all__ = ['MpdSong']
 

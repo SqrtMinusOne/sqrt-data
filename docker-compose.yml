@@ -42,16 +42,10 @@ services:
             - postgres
         depends_on:
             - postgres
-        volumes:
-            - type: bind
-              source: ./config.toml
-              target: /config.toml
-            - type: bind
-              source: ~/logs-sync-debug
-              target: /root/logs-sync-debug
         command: prefect orion start
         environment:
             PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
+            PREFECT_ORION_API_HOST: 0.0.0.0
 
     sqrt_data_agent:
         container_name: "sqrt-data-agent"
@@ -71,7 +65,7 @@ services:
             - ./config.service.local.toml:/app/config.service.local.toml
         command: prefect agent start -q "main"
         environment:
-            PREFECT_API_URL: 'http://sqrt_data_orion:4200'
+            PREFECT_API_URL: 'http://sqrt_data_orion:4200/api/'
 
     backups:
         image: prodrigestivill/postgres-backup-local

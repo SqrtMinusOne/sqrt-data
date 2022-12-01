@@ -132,13 +132,16 @@ def save_buckets(force=False):
 #+end_src
 
 #+begin_src python
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         prog='sqrt_data_agent.aw'
     )
     parser.add_argument('-f', '--force', action='store_true')
     args = parser.parse_args()
     save_buckets(args.force)
+
+if __name__ == '__main__':
+    main()
 #+end_src
 
 ** Saving (Android)
@@ -191,7 +194,7 @@ Here's the general model:
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/aw/bucket.py")
 import sqlalchemy as sa
-from sqrt_data.models import Base
+from sqrt_data_service.models import Base
 
 __all__ = ['Bucket']
 

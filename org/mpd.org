@@ -227,7 +227,7 @@ Using SQLAlchemy models here for some reason.
 The model for a particular song:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/mpd/MpdSong.py")
 import sqlalchemy as sa
-from sqrt_data.models import Base
+from sqrt_data_service.models import Base
 
 __all__ = ['MpdSong']
 
@@ -261,7 +261,7 @@ class MpdSong(Base):
 The model that records that a particular song was listened at a particular time.
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/mpd/SongListened.py")
 import sqlalchemy as sa
-from sqrt_data.models import Base
+from sqrt_data_service.models import Base
 
 __all__ = ['SongListened']
 

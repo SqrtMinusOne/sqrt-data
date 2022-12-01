@@ -1,21 +1,26 @@
-# [[file:org/core.org::*setup.py][setup.py:1]]
+# [[file:org/core-new.org::*setup.py for agent][setup.py for agent:1]]
 from setuptools import find_packages, setup
 
 setup(
-    name='sqrt_data',
-    version='2.0.1',
-    description=
-    'A collection of scripts to gather various data from my machines and store it on my VPS',
+    name='sqrt_data_agent',
+    version='3.0.0',
+    description='Agent for sqrt-data',
     author='SqrtMinusOne',
     author_email='thexcloud@gmail.com',
-    packages=find_packages(),
+    packages=find_packages(exclude=['sqrt_data_service']),
     install_requires=[
-        'pandas', 'numpy', 'click', 'inquirer', 'python-mpd2', 'sqlalchemy',
-        'psycopg2-binary', 'requests', 'tqdm', 'beautifulsoup4', 'dynaconf',
-        'sqlitedict', 'furl', 'schedule', 'tldextract'
+        'pandas>=1.4.2',
+        'numpy>=1.21.6',
+        'requests>=2.27.1',
+        'furl>=2.1.3',
+        'dynaconf>=3.1.7',
+        'python-mpd2>=3.0.4',
+        'python-dateutil>=2.8.2',
     ],
     entry_points='''
     [console_scripts]
-    sqrt_data=sqrt_data.manage:cli
-    ''')
-# setup.py:1 ends here
+    sqrt_data_agent_mpd=sqrt_data_agent.mpd:main
+    sqrt_data_agent_sync=sqrt_data_agent.sync:main
+    '''
+)
+# setup.py for agent:1 ends here

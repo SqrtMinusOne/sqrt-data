@@ -69,11 +69,14 @@ def sync_logs(force=False):
 # Sync:6 ends here
 
 # [[file:../org/core-new.org::*Sync][Sync:7]]
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         prog='sqrt_data_agent.aw'
     )
     parser.add_argument('-f', '--force', action='store_true')
     args = parser.parse_args()
     sync_logs(args.force)
+
+if __name__ == '__main__':
+    main()
 # Sync:7 ends here

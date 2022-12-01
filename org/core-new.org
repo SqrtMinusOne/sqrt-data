@@ -661,22 +661,25 @@ def sync_logs(force=False):
 
 And a simple CLI with =argparse=:
 #+begin_src python
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         prog='sqrt_data_agent.aw'
     )
     parser.add_argument('-f', '--force', action='store_true')
     args = parser.parse_args()
     sync_logs(args.force)
+
+if __name__ == '__main__':
+    main()
 #+end_src
 
-* Deploy
+* Deploy & Usage
 ** Python setup
 *** Requirements
 Requirements for =sqrt_data_service=:
 #+begin_src text :tangle (my/org-prj-dir "requirements.txt")
 dynaconf==3.1.11
-sqlalchemy>=1.4
+sqlalchemy==1.4.44
 psycopg2-binary
 alembic
 click==8.1.3
@@ -688,7 +691,229 @@ tqdm==4.64.1
 beautifulsoup4==4.11.1
 python-dateutil==2.8.2
 #+end_src
+*** setup.py for agent
+#+begin_src python :tangle (my/org-prj-dir "setup.py")
+from setuptools import find_packages, setup
 
+setup(
+    name='sqrt_data_agent',
+    version='3.0.0',
+    description='Agent for sqrt-data',
+    author='SqrtMinusOne',
+    author_email='thexcloud@gmail.com',
+    packages=find_packages(exclude=['sqrt_data_service']),
+    install_requires=[
+        'pandas>=1.4.2',
+        'numpy>=1.21.6',
+        'requests>=2.27.1',
+        'furl>=2.1.3',
+        'dynaconf>=3.1.7',
+        'python-mpd2>=3.0.4',
+        'python-dateutil>=2.8.2',
+    ],
+    entry_points='''
+    [console_scripts]
+    sqrt_data_agent_mpd=sqrt_data_agent.mpd:main
+    sqrt_data_agent_sync=sqrt_data_agent.sync:main
+    '''
+)
+#+end_src
+** Guix setup
+This part is largely inspired by the build setup of the Nyxt browser.
+
+This concerns only the agent, as I don't use Guix on the server yet. Packaging prefect for Guix would be a pain anyway.
+
+*** Usage
+To make a development environment, run:
+#+begin_src bash :eval no
+guix shell --container -D -f sqrt-data-agent.scm --share=$HOME/logs-sync
+#+end_src
+This will create an environment with all the dependencies, but not the =sqrt_data_agent= package itself.
+
+To create an environment with the package, remove the =-D= flag:
+#+begin_src bash :eval no
+guix shell --container -f sqrt-data-agent.scm --share=$HOME/logs-sync
+#+end_src
+
+One issue with the container is that the app may not have access to stuff outside the container, like the MPD socket. If such access is necessary, remove the =--container= flag.
+#+begin_src bash :eval no
+guix shell -f sqrt-data-agent.scm
+#+end_src
+
+*** Guix module
+Defining the module.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-module (sqrt-data)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
+  #:use-module (ice-9 match)
+  #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 popen)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix gexp)
+  #:use-module (guix packages)
+  #:use-module (guix build utils)
+  #:use-module (guix build-system python)
+  #:use-module (guix build-system gnu)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages compression)
+  #:use-module (gnu packages databases)
+  #:use-module (gnu packages gawk)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages mpd)
+  #:use-module (gnu packages networking)
+  #:use-module (gnu packages rsync)
+  #:use-module (gnu packages python-web)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages python-science)
+  #:use-module (gnu packages ssh)
+  #:use-module (gnu packages version-control))
+#+end_src
+
+We want to build the package from the local source, so here is a way to figure out the source directory.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define %source-dir (dirname (current-filename)))
+;; (define %source-dir "/home/pavel/Code/self-quantification/sqrt-data/")
+#+end_src
+
+Filter the list of files by =git ls-files=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define git-file?
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "ls-files")))
+         (files (let loop ((lines '()))
+                  (match (read-line pipe)
+                    ((? eof-object?)
+                     (reverse lines))
+                    (line
+                     (loop (cons line lines))))))
+         (status (close-pipe pipe)))
+    (lambda (file stat)
+      (match (stat:type stat)
+        ('directory
+         #t)
+        ((or 'regular 'symlink)
+         (any (cut string-suffix? <> file) files))
+        (_
+         #f)))))
+#+end_src
+
+Get the version of the package with =git describe --always --tags=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define (git-version)
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "describe" "--always" "--tags")))
+         (version (read-line pipe)))
+    (close-pipe pipe)
+    version))
+#+end_src
+
++Guix doesn't seem to have all the required dependencies+ I don't need them anymore hehe.
+
+But declaring [[https://github.com/deajan/osync][osync]] here because I'm not sure how to include my channel.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-public osync
+  (package
+    (name "osync")
+    (version "1.3-beta3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/deajan/osync/")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1zpxypgfj6sr87wq6s237fr2pxkncjb0w9hq14zfjppkvws66n0w"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f
+       #:validate-runpath? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-file-names
+           (lambda _
+             ;; Silence beta warining. Otherwise the exitcode is not zero
+             (substitute* "osync.sh" (("IS_STABLE=false") "IS_STABLE=true"))))
+         (delete 'bootstrap)
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (string-append (assoc-ref outputs "out"))))
+               ;; Use system* because installer returns exitcode 2 because it doesn't find systemd or initrc
+               (system* "./install.sh" (string-append "--prefix=" out) "--no-stats")
+               (mkdir (string-append out "/bin"))
+               (symlink (string-append out "/usr/local/bin/osync.sh")
+                        (string-append out "/bin/osync.sh"))
+               (symlink (string-append out "/usr/local/bin/osync-batch.sh")
+                        (string-append out "/bin/osync-batch.sh"))
+               (symlink (string-append out "/usr/local/bin/ssh-filter.sh")
+                        (string-append out "/bin/ssh-filter.sh"))
+               #t))))))
+    ;; TODO replace the executables with full paths
+    ;; XXX Can't put "iputils" in propagated-inputs because on Guix
+    ;; "ping" is in setuid-programs. Set "REMOTE_HOST_PING" to false if ping
+    ;; is not available.
+    (propagated-inputs
+     `(("rsync" ,rsync)
+       ("gawk" ,gawk)
+       ("coreutils" ,coreutils)
+       ("openssh" ,openssh)
+       ("gzip" ,gzip)
+       ("hostname" ,inetutils)))
+    (synopsis "A robust two way (bidirectional) file sync script based on rsync with fault tolerance, POSIX ACL support, time control and near realtime sync")
+    (home-page "http://www.netpower.fr/osync")
+    (license license:bsd-3)
+    (description "A two way filesync script running on bash Linux, BSD, Android, MacOSX, Cygwin, MSYS2, Win10 bash and virtually any system supporting bash). File synchronization is bidirectional, and can be run manually, as scheduled task, or triggered on file changes in daemon mode. It is a command line tool rsync wrapper with a lot of additional features baked in.")))
+#+end_src
+
+Finally, the definition of the package.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-public sqrt-data-agent
+  (package
+    (name "sqrt-data-agent")
+    (version (git-version))
+    (source
+     (local-file %source-dir #:recursive? #t #:select? git-file?))
+    (build-system python-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'fix-dependencies
+           (lambda _
+             (substitute* "sqrt_data_agent/sync.py"
+               (("EXEC_NOTIFY_SEND = (.*)")
+                (format #f "EXEC_NOTIFY_SEND = ~s\n" (which "notify-send"))))
+             (substitute* "sqrt_data_agent/sync.py"
+               (("EXEC_OSYNC = (.*)")
+                (format #f "EXEC_OSYNC = ~s\n" (which "osync.sh")))))))))
+    (native-inputs
+     `(("git" ,git-minimal)))
+    (inputs
+     `(("libnotify" ,libnotify)
+       ("osync" ,osync)))
+    (propagated-inputs
+     `(("python-pandas" ,python-pandas)
+       ("python-numpy" ,python-numpy)
+       ("python-mpd2" ,python-mpd2)
+       ("python-requests" ,python-requests)
+       ("python-furl" ,python-furl)
+       ("dynaconf" ,dynaconf)))
+    (synopsis "Agent for sqrt-data")
+    (description "Agent for sqrt-data")
+    (home-page "https://github.com/SqrtMinusOne/sqrt-data")
+    (license license:gpl3)))
+#+end_src
+
+Also have to evaluate the variable with the definition for the =-f= flag.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+sqrt-data-agent
+#+end_src
 ** Server
 The server part uses Docker because I'm in love with Docker.
 
@@ -751,16 +976,10 @@ services:
             - postgres
         depends_on:
             - postgres
-        volumes:
-            - type: bind
-              source: ./config.toml
-              target: /config.toml
-            - type: bind
-              source: ~/logs-sync-debug
-              target: /root/logs-sync-debug
         command: prefect orion start
         environment:
             PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
+            PREFECT_ORION_API_HOST: 0.0.0.0
 
     sqrt_data_agent:
         container_name: "sqrt-data-agent"
@@ -780,7 +999,7 @@ services:
             - ./config.service.local.toml:/app/config.service.local.toml
         command: prefect agent start -q "main"
         environment:
-            PREFECT_API_URL: 'http://sqrt_data_orion:4200'
+            PREFECT_API_URL: 'http://sqrt_data_orion:4200/api/'
 
     backups:
         image: prodrigestivill/postgres-backup-local
