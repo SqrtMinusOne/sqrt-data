@@ -143,3 +143,4 @@ source
 _data/*
 /config.service.local.toml
 .git
+backups

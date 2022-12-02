@@ -60,11 +60,10 @@ def sync_logs(force=False):
         },
         check=True
     )
-    if not is_android():
-        subprocess.run(
-            [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
-            env={'DISPLAY': ':0', **os.environ}
-        )
+    subprocess.run(
+        [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
+        env={'DISPLAY': ':0', **os.environ}
+    )
     set_today_sync()
 # Sync:6 ends here
 

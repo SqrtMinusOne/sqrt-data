@@ -29,8 +29,8 @@ services:
             MB_DB_TYPE: postgres
             MB_DB_DBNAME: metabase
             MB_DB_PORT: 5432
-            MB_DB_USER: postgres
-            MB_DB_PASS: localdbpass
+            MB_DB_USER: ${POSTGRES_USER}
+            MB_DB_PASS: ${POSTGRES_PASSWORD}
             MB_DB_HOST: postgres
     sqrt_data_orion:
         container_name: "sqrt-data-orion"
@@ -57,8 +57,8 @@ services:
             - postgres
         volumes:
             - type: bind
-              source: ./config.toml
-              target: /config.toml
+              source: ./config.service.toml
+              target: /config.service.toml
             - type: bind
               source: ~/logs-sync-debug
               target: /root/logs-sync-debug
