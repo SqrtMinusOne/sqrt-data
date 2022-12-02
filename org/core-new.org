@@ -1,0 +1,1049 @@
+#+TITLE: sqrt-data core
+#+PROPERTY: header-args :mkdirp yes
+#+PROPERTY: header-args:bash   :tangle-mode (identity #o755) :comments link :shebang "#!/usr/bin/env bash"
+#+PROPERTY: header-args:python :comments link :eval no
+#+PROPERTY: header-args:scheme :comments link :eval no
+#+PROPERTY: PRJ-DIR ..
+
+The basic outline of the project is:
+- =sqrt_data_service= is deployed on the VPS and does data processing
+- =sqrt_data_agent= is installed on host machines and periodically sends data to the service.
+
+* Service API
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/__init__.py")
+from .config import *
+from .db import *
+from .hash import *
+#+end_src
+
+** Configuration
+Let's start with configuration. I like the [[https://www.dynaconf.com/][dynaconf]] library to manage my Python configs.
+
+It's convinient enough but at the same time allows some logic in its syntax, for instance string interpolation.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/config.py")
+import os
+
+from dynaconf import Dynaconf
+
+__all__ = ['settings']
+
+settings_files = [
+    # os.path.expanduser('~/.config/sqrt-data/config.service.toml'),
+    'config.service.toml'
+]
+
+if all([not os.path.exists(f) for f in settings_files]):
+    print('No config found!')
+
+settings = Dynaconf(settings_files=settings_files)
+#+end_src
+
+The library allows multiple configuration formats, of which I prefer TOML.
+
+#+begin_src conf-toml :tangle (my/org-prj-dir "config.service.toml")
+dynaconf_merge = true
+
+[database]
+user = 'postgres'
+password = 'localdbpass'
+database = 'data'
+host = 'localhost'
+port = 5432
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+temp_data_folder = '/tmp/sqrt-data'
+cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
+
+[prefect]
+queue = 'main'
+
+[archive]
+days = 31
+timeout = 5
+exclude_dirs = ['@format {this.general.root}/android-misc', '@format {this.general.root}/youtube']
+
+[waka]
+api_key = 'dummy'
+api_url = 'https://wakatime.com/api/v1'
+schema = 'wakatime'
+
+[mpd]
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'
+
+[aw]
+last_updated = '@format {this.general.root}/aw_last_updated.json'
+logs_folder = '@format {this.general.root}/aw'
+android_file = '@format {this.general.root}/android-misc/aw-buckets-export.json'
+types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
+schema = 'aw'
+skip_afk_interval = '900'
+skip_afk_apps = '^(zoom|mpv)$'
+skip_afk_titles = '(YouTube)'
+webtab_apps = '^(Nightly|firefox)$'
+skip_urls = '^(moz-extension|about:blank)'
+
+[aw.apps_convert]
+Nightly = 'firefox'
+Chromium-browser = 'Chromium'
+unknown = 'Emacs' # EXWM
+
+[vk]
+author = 'Pavel Korytov'
+schema = 'vk'
+
+[location]
+list_csv = '@format {this.general.root}/csv/locations.csv'
+tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
+hostnames_csv = '@format {this.general.root}/csv/loc_hostnames.csv'
+#+end_src
+
+** Database
+*** Connection
+I use [[https://www.sqlalchemy.org/][SQLAlchemy]] to work with the database. I have some things that I don't like about the framework, but I worked with it enough to know where to avoid the rough edges. Or so I hope.
+
+Also, the framework isn't the only thing that does schema manipulations (pandas also can do it), so I can't [[https://alembic.sqlalchemy.org/en/latest/autogenerate.html][autogenerate]] migrations.
+
+Here's the class that has been into a lot of my projects.
+
+#+begin_src python :noweb yes :tangle (my/org-prj-dir "sqrt_data_service/api/db.py")
+import logging
+from contextlib import contextmanager
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+
+from .config import settings
+
+__all__ = ['DBConn']
+
+
+class DBConn:
+    engine = None
+    Session = None
+    Base = None
+
+    <<db-dbconn>>
+#+end_src
+
+A "constructor" that just sets up the class variables. Call this somewhere in the project initialization flow.
+
+#+begin_src python :noweb-ref db-dbconn :tangle no
+def __init__(self, **kwargs):
+    DBConn.engine = DBConn.get_engine(**kwargs)
+    DBConn.Session = sessionmaker()
+    DBConn.Session.configure(bind=self.engine)
+    DBConn.scoped_session = scoped_session(DBConn.Session)
+    logging.info('Initialized database connection')
+#+end_src
+
+Reset the class. The original project in the galaxy far, far away used this for unit tests.
+
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@classmethod
+def reset(cls):
+    cls.engine = cls.Session = None
+#+end_src
+
+Get the database session object.
+
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@staticmethod
+@contextmanager
+def get_session(**kwargs):
+    session = DBConn.Session(**kwargs)
+    yield session
+    session.close()
+#+end_src
+
+Usage of the above method is as follows:
+#+begin_src python :tangle no
+with DBConn.get_session() as db:
+    db.<do-stuff>
+#+end_src
+
+A similar method that ensures that a session exists.
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@staticmethod
+@contextmanager
+def ensure_session(session, **kwargs):
+    if session is None:
+        session = DBConn.Session(**kwargs)
+        yield session
+        session.close()
+    else:
+        yield session
+#+end_src
+
+Get a URL and fresh database engine. The engine object can be passed to pandas, by the way.
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@staticmethod
+def get_url(user=None, password=None, **kwargs):
+    url = "postgresql://{0}:{1}@{2}:{3}/{4}".format(
+        user or settings.database.user, password or
+        settings.database.password, settings.database.host,
+        settings.database.port, settings.database.database
+    )
+    return url
+
+@staticmethod
+def get_engine(**kwargs):
+    url = DBConn.get_url(**kwargs)
+    return create_engine(url, **kwargs)
+#+end_src
+
+Finally, a method to create tables in a given schema.
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@staticmethod
+def create_schema(schema, Base=None):
+    DBConn.engine.execute(f'CREATE SCHEMA IF NOT EXISTS {schema}')
+    if Base is not None:
+        tables = []
+        for name, table in Base.metadata.tables.items():
+            if table.schema == schema:
+                tables.append(table)
+        Base.metadata.create_all(DBConn.engine, tables)
+#+end_src
+
+*** Models
+Base model for SQLAlchemy:
+
+#+begin_src python :noweb yes :tangle (my/org-prj-dir "sqrt_data_service/models/base.py")
+from sqlalchemy.ext.declarative import declarative_base
+
+__all__ = ['Base']
+
+Base = declarative_base()
+#+end_src
+
+#+begin_src python :noweb yes :tangle (my/org-prj-dir "sqrt_data_service/models/__init__.py")
+from .base import *
+from .hash import *
+#+end_src
+
+*** Migrations
+I use [[https://alembic.sqlalchemy.org/en/latest/][alembic]] for occasional database migrations.
+
+As I said above, I can't use the autogenerate feature, so some manual management is required.
+
+=alembic.ini= is created automatically by =alembic init=, but why not add it here for completeness' sake.
+
+#+begin_src conf-space  :tangle (my/org-prj-dir "alembic.ini")
+[alembic]
+script_location = migrations
+prepend_sys_path = .
+version_path_separator = os
+
+# This is overriden in env.py
+sqlalchemy.url = driver://user:pass@localhost/dbname
+
+[loggers]
+keys = root,sqlalchemy,alembic
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+qualname =
+
+[logger_sqlalchemy]
+level = WARN
+handlers =
+qualname = sqlalchemy.engine
+
+[logger_alembic]
+level = INFO
+handlers =
+qualname = alembic
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(levelname)-5.5s [%(name)s] %(message)s
+datefmt = %H:%M:%S
+#+end_src
+
+=migrations/env.py= is another part of the config. Some imports:
+
+#+begin_src python :tangle (my/org-prj-dir "migrations/env.py")
+from logging.config import fileConfig
+
+from sqlalchemy import engine_from_config
+from sqlalchemy import pool
+
+from alembic import context
+#+end_src
+
+Set the database URL from the config:
+
+#+begin_src python :tangle (my/org-prj-dir "migrations/env.py")
+config = context.config
+
+from sqrt_data_service.api import DBConn
+
+config.set_section_option(
+    config.config_ini_section, 'sqlalchemy.url', DBConn.get_url()
+)
+#+end_src
+
+Interpret the config file for Python logging.
+#+begin_src python :tangle (my/org-prj-dir "migrations/env.py")
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+#+end_src
+
+Set the metadata object:
+#+begin_src python :tangle (my/org-prj-dir "migrations/env.py")
+from sqrt_data_service import models
+
+target_metadata = models.Base.metadata
+#+end_src
+
+And the rest is copied from the version of the file generated by =alembic init=:
+
+#+begin_src python :tangle (my/org-prj-dir "migrations/env.py")
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode.
+
+    This configures the context with just a URL
+    and not an Engine, though an Engine is acceptable
+    here as well.  By skipping the Engine creation
+    we don't even need a DBAPI to be available.
+
+    Calls to context.execute() here emit the given string to the
+    script output.
+
+    """
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode.
+
+    In this scenario we need to create an Engine
+    and associate a connection with the context.
+
+    """
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection, target_metadata=target_metadata
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+#+end_src
+
+** Hashes
+Because the data is synced via files, I need to track changes in these files. The easiest way is to store hashes of the files.
+
+I used to use [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] for that purpose, but at some point realized that it's easier to store them in the database.
+
+With that said, here's the model definition
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/hash.py")
+import sqlalchemy as sa
+from sqrt_data_service.models import Base
+
+__all__ = ['FileHash']
+
+
+class FileHash(Base):
+    __table_args__ = {'schema': 'hashes'}
+    __tablename__ = 'file_hash'
+
+    file_name = sa.Column(
+        sa.String(1024),
+        primary_key=True,
+    )
+    hash = sa.Column(sa.String(256), nullable=False)
+#+end_src
+
+And the corresponding logic:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/hash.py")
+import logging
+import os
+import subprocess
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from .config import settings
+from sqrt_data_service.api import DBConn
+from sqrt_data_service.models import FileHash
+#+end_src
+
+First, calculate the hashsum:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/hash.py")
+def md5sum(filename):
+    res = subprocess.run(
+        ['md5sum', filename],
+        capture_output=True,
+        check=True,
+        cwd=settings.general.root
+    ).stdout
+    res = res.decode('utf-8')
+    return res.split(' ')[0]
+#+end_src
+
+And the wrapper class:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/hash.py")
+class FileHasher:
+    def __init__(self):
+        DBConn()
+
+    def is_updated(self, file_name, db=None):
+        with DBConn.ensure_session(db) as db:
+            saved = db.execute(
+                sa.select(FileHash).where(FileHash.file_name == file_name)
+            ).scalar_one_or_none()
+            if saved is None:
+                return True
+            return saved.hash != md5sum(file_name)
+
+    def save_hash(self, file_name, db=None):
+        hash = md5sum(file_name)
+        was_ensured = db is None
+        with DBConn.ensure_session(db) as db:
+            insert_stmt = pg_insert(FileHash)
+            upsert_stmt = insert_stmt.on_conflict_do_update(
+                constraint='file_hash_pkey',
+                set_={'hash': insert_stmt.excluded.hash}
+            )
+            db.execute(upsert_stmt, { 'file_name': file_name, 'hash': hash })
+            if was_ensured:
+                db.commit()
+#+end_src
+
+** CLI entrypoint
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data_service/manage.py")
+:END:
+There used to me more stuff in the CLI before I migrated to [[https://www.prefect.io/][prefect.io]], but some things still remain. My CLI library of choice is [[https://click.palletsprojects.com/en/8.0.x/][click]].
+
+#+begin_src python
+import click
+import os
+
+from sqrt_data_service.api import FileHasher, DBConn
+from sqrt_data_service.models import Base
+
+@click.group()
+def cli():
+    print(f'CWD: {os.getcwd()}')
+#+end_src
+
+A few commands to work with hashes:
+#+begin_src python
+@click.group(help='Hashes')
+def hash():
+    pass
+
+@hash.command()
+@click.option('-f', '--file-name', required=True, type=str)
+def check_hash(file_name):
+    hasher = FileHasher()
+    if not os.path.exists(file_name):
+        print('File not found')
+    else:
+        result = hasher.is_updated(file_name)
+        print(f'Updated: {result}')
+
+
+@hash.command()
+@click.option('-f', '--file-name', required=True, type=str)
+def save_hash(file_name):
+    hasher = FileHasher()
+    hasher.save_hash(file_name)
+
+cli.add_command(hash)
+#+end_src
+
+Create schema:
+#+begin_src python
+@click.group(help='Database')
+def db():
+    pass
+
+@db.command()
+@click.option('-n', '--name', required=True, type=str)
+def create_schema(name):
+    DBConn()
+    DBConn.create_schema(name, Base)
+
+cli.add_command(db)
+#+end_src
+
+To make this work, we need to invoke =cli()=. Now the CLI can be used with =python -m sqrt_data_service.manage=:
+
+#+begin_src python
+if __name__ == '__main__':
+    cli()
+#+end_src
+
+And the following =__main__.py= to allow running the CLI with =python -m sqrt_data_service=:
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/__main__.py")
+from .manage import cli
+
+if __name__ == '__main__':
+    cli()
+#+end_src
+
+* Agent API
+Some of the code of the service is duplicated here, but I don't care that much.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_agent/api/__init__.py")
+from .config import *
+#+end_src
+
+** Configuration
+Also using dynaconf for configuration.
+
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_agent/api/config.py")
+import os
+
+from dynaconf import Dynaconf
+
+__all__ = ['settings']
+
+settings_files = [
+    os.path.expanduser('~/.config/sqrt-data/config.agent.toml'),
+    'config.agent.toml'
+]
+
+if all([not os.path.exists(f) for f in settings_files]):
+    print('No config found!')
+
+settings = Dynaconf(settings_files=settings_files)
+#+end_src
+
+#+begin_src conf-toml :tangle (my/org-prj-dir "config.agent.toml")
+dynaconf_merge = true
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+
+[mpd]
+log_folder = '@format {this.general.root}/mpd/logs'
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+exception_timeout = 5
+exception_count = 10
+listened_threshold = 0.5
+custom_attrs = ['musicbrainz_albumid', 'musicbrainz_artistid', 'musicbrainz_trackid']
+
+[aw]
+last_updated = '@format {this.general.root}/aw_last_updated.json'
+logs_folder = '@format {this.general.root}/aw'
+types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
+api = 'http://localhost:5600/api'
+
+[sync]
+log_file = '@format {this.general.root}/sync.log'
+target = 'ssh://pavel@sqrtminusone.xyz//home/pavel/logs-sync'
+#+end_src
+
+** Sync
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data_agent/sync.py")
+:END:
+Synchronizing the =logs-sync= folder between client machines and the server.
+
+Previously, this was a bash script, but I've converted in to Python for Guix packaging purposes.
+
+I use [[https://github.com/deajan/osync][osync]] as the sync engine. I even made a [[https://github.com/SqrtMinusOne/channel-q/blob/master/osync.scm][Guix package definition]], although didn't submit it yet.
+
+#+begin_src python
+import argparse
+import os
+import subprocess
+import socket
+from datetime import datetime
+
+from sqrt_data_agent.api import settings
+from .aw import save_buckets
+from .mpd_save_library import save_library
+#+end_src
+
+All the dependencies are written down like this to make packaging easier:
+#+begin_src python
+EXEC_OSYNC = 'osync.sh'
+EXEC_NOTIFY_SEND = 'notify-send'
+#+end_src
+The idea is that the names will be replaced by full paths in the Guix recipe.
+
+I want the sync run only once a day on a given hostname. To do that, I write the following string to the =sync.log_file= after a successful synchronization:
+
+#+begin_src python
+def log_string():
+    date_string = datetime.strftime(datetime.now(), "%Y-%m-%d")
+    return f'{socket.gethostname()}: {date_string}'
+#+end_src
+
+Check if that string exists in the file:
+#+begin_src python
+def check_today_sync():
+    if not os.path.exists(settings.sync.log_file):
+        return False
+    string = log_string()
+    with open(settings.sync.log_file, 'r') as f:
+        for line in f:
+            if line.strip() == string:
+                return True
+    return False
+#+end_src
+
+And append that string to the file:
+#+begin_src python
+def set_today_sync():
+    with open(settings.sync.log_file, 'a') as f:
+        f.write(log_string() + '\n')
+#+end_src
+
+Now, performing the actual sync.
+#+begin_src python
+def sync_logs(force=False):
+    if not force and check_today_sync():
+        print('Already synced today!')
+        return
+    save_library()
+    save_buckets(force)
+    subprocess.run(
+        [
+            EXEC_OSYNC, f'--initiator={settings.general.root}',
+            f'--target={settings.sync.target}'
+        ],
+        env={
+            **os.environ,
+            'RSYNC_EXCLUDE_PATTERN': 'sync.log',
+            'CREATE_DIRS': 'yes',
+            'REMOTE_HOST_PING': 'false',
+            'PATH': os.environ['PATH']
+        },
+        check=True
+    )
+    if not is_android():
+        subprocess.run(
+            [EXEC_NOTIFY_SEND, 'Sync', 'Logs submitted to the server'],
+            env={'DISPLAY': ':0', **os.environ}
+        )
+    set_today_sync()
+#+end_src
+
+And a simple CLI with =argparse=:
+#+begin_src python
+def main():
+    parser = argparse.ArgumentParser(
+        prog='sqrt_data_agent.aw'
+    )
+    parser.add_argument('-f', '--force', action='store_true')
+    args = parser.parse_args()
+    sync_logs(args.force)
+
+if __name__ == '__main__':
+    main()
+#+end_src
+
+* Deploy & Usage
+** Python setup
+*** Requirements
+Requirements for =sqrt_data_service=:
+#+begin_src text :tangle (my/org-prj-dir "requirements.txt")
+dynaconf==3.1.11
+sqlalchemy==1.4.44
+psycopg2-binary
+alembic
+click==8.1.3
+furl==2.1.3
+tldextract==3.4.0
+pandas==1.5.1
+numpy==1.23.4
+tqdm==4.64.1
+beautifulsoup4==4.11.1
+python-dateutil==2.8.2
+#+end_src
+*** setup.py for agent
+#+begin_src python :tangle (my/org-prj-dir "setup.py")
+from setuptools import find_packages, setup
+
+setup(
+    name='sqrt_data_agent',
+    version='3.0.0',
+    description='Agent for sqrt-data',
+    author='SqrtMinusOne',
+    author_email='thexcloud@gmail.com',
+    packages=find_packages(exclude=['sqrt_data_service']),
+    install_requires=[
+        'pandas>=1.4.2',
+        'numpy>=1.21.6',
+        'requests>=2.27.1',
+        'furl>=2.1.3',
+        'dynaconf>=3.1.7',
+        'python-mpd2>=3.0.4',
+        'python-dateutil>=2.8.2',
+    ],
+    entry_points='''
+    [console_scripts]
+    sqrt_data_agent_mpd=sqrt_data_agent.mpd:main
+    sqrt_data_agent_sync=sqrt_data_agent.sync:main
+    '''
+)
+#+end_src
+** Guix setup
+This part is largely inspired by the build setup of the Nyxt browser.
+
+This concerns only the agent, as I don't use Guix on the server yet. Packaging prefect for Guix would be a pain anyway.
+
+*** Usage
+To make a development environment, run:
+#+begin_src bash :eval no
+guix shell --container -D -f sqrt-data-agent.scm --share=$HOME/logs-sync
+#+end_src
+This will create an environment with all the dependencies, but not the =sqrt_data_agent= package itself.
+
+To create an environment with the package, remove the =-D= flag:
+#+begin_src bash :eval no
+guix shell --container -f sqrt-data-agent.scm --share=$HOME/logs-sync
+#+end_src
+
+One issue with the container is that the app may not have access to stuff outside the container, like the MPD socket. If such access is necessary, remove the =--container= flag.
+#+begin_src bash :eval no
+guix shell -f sqrt-data-agent.scm
+#+end_src
+
+*** Guix module
+Defining the module.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-module (sqrt-data)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
+  #:use-module (ice-9 match)
+  #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 popen)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix gexp)
+  #:use-module (guix packages)
+  #:use-module (guix build utils)
+  #:use-module (guix build-system python)
+  #:use-module (guix build-system gnu)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu packages admin)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages compression)
+  #:use-module (gnu packages databases)
+  #:use-module (gnu packages gawk)
+  #:use-module (gnu packages gnome)
+  #:use-module (gnu packages mpd)
+  #:use-module (gnu packages networking)
+  #:use-module (gnu packages rsync)
+  #:use-module (gnu packages python-web)
+  #:use-module (gnu packages python-xyz)
+  #:use-module (gnu packages python-science)
+  #:use-module (gnu packages ssh)
+  #:use-module (gnu packages version-control))
+#+end_src
+
+We want to build the package from the local source, so here is a way to figure out the source directory.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define %source-dir (dirname (current-filename)))
+;; (define %source-dir "/home/pavel/Code/self-quantification/sqrt-data/")
+#+end_src
+
+Filter the list of files by =git ls-files=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define git-file?
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "ls-files")))
+         (files (let loop ((lines '()))
+                  (match (read-line pipe)
+                    ((? eof-object?)
+                     (reverse lines))
+                    (line
+                     (loop (cons line lines))))))
+         (status (close-pipe pipe)))
+    (lambda (file stat)
+      (match (stat:type stat)
+        ('directory
+         #t)
+        ((or 'regular 'symlink)
+         (any (cut string-suffix? <> file) files))
+        (_
+         #f)))))
+#+end_src
+
+Get the version of the package with =git describe --always --tags=.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define (git-version)
+  (let* ((pipe (with-directory-excursion %source-dir
+                 (open-pipe* OPEN_READ "git" "describe" "--always" "--tags")))
+         (version (read-line pipe)))
+    (close-pipe pipe)
+    version))
+#+end_src
+
++Guix doesn't seem to have all the required dependencies+ I don't need them anymore hehe.
+
+But declaring [[https://github.com/deajan/osync][osync]] here because I'm not sure how to include my channel.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-public osync
+  (package
+    (name "osync")
+    (version "1.3-beta3")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/deajan/osync/")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1zpxypgfj6sr87wq6s237fr2pxkncjb0w9hq14zfjppkvws66n0w"))))
+    (build-system gnu-build-system)
+    (arguments
+     `(#:tests? #f
+       #:validate-runpath? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'patch-file-names
+           (lambda _
+             ;; Silence beta warining. Otherwise the exitcode is not zero
+             (substitute* "osync.sh" (("IS_STABLE=false") "IS_STABLE=true"))))
+         (delete 'bootstrap)
+         (delete 'configure)
+         (delete 'build)
+         (replace 'install
+           (lambda* (#:key outputs #:allow-other-keys)
+             (let ((out (string-append (assoc-ref outputs "out"))))
+               ;; Use system* because installer returns exitcode 2 because it doesn't find systemd or initrc
+               (system* "./install.sh" (string-append "--prefix=" out) "--no-stats")
+               (mkdir (string-append out "/bin"))
+               (symlink (string-append out "/usr/local/bin/osync.sh")
+                        (string-append out "/bin/osync.sh"))
+               (symlink (string-append out "/usr/local/bin/osync-batch.sh")
+                        (string-append out "/bin/osync-batch.sh"))
+               (symlink (string-append out "/usr/local/bin/ssh-filter.sh")
+                        (string-append out "/bin/ssh-filter.sh"))
+               #t))))))
+    ;; TODO replace the executables with full paths
+    ;; XXX Can't put "iputils" in propagated-inputs because on Guix
+    ;; "ping" is in setuid-programs. Set "REMOTE_HOST_PING" to false if ping
+    ;; is not available.
+    (propagated-inputs
+     `(("rsync" ,rsync)
+       ("gawk" ,gawk)
+       ("coreutils" ,coreutils)
+       ("openssh" ,openssh)
+       ("gzip" ,gzip)
+       ("hostname" ,inetutils)))
+    (synopsis "A robust two way (bidirectional) file sync script based on rsync with fault tolerance, POSIX ACL support, time control and near realtime sync")
+    (home-page "http://www.netpower.fr/osync")
+    (license license:bsd-3)
+    (description "A two way filesync script running on bash Linux, BSD, Android, MacOSX, Cygwin, MSYS2, Win10 bash and virtually any system supporting bash). File synchronization is bidirectional, and can be run manually, as scheduled task, or triggered on file changes in daemon mode. It is a command line tool rsync wrapper with a lot of additional features baked in.")))
+#+end_src
+
+Finally, the definition of the package.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+(define-public sqrt-data-agent
+  (package
+    (name "sqrt-data-agent")
+    (version (git-version))
+    (source
+     (local-file %source-dir #:recursive? #t #:select? git-file?))
+    (build-system python-build-system)
+    (arguments
+     `(#:tests? #f
+       #:phases
+       (modify-phases %standard-phases
+         (add-before 'build 'fix-dependencies
+           (lambda _
+             (substitute* "sqrt_data_agent/sync.py"
+               (("EXEC_NOTIFY_SEND = (.*)")
+                (format #f "EXEC_NOTIFY_SEND = ~s\n" (which "notify-send"))))
+             (substitute* "sqrt_data_agent/sync.py"
+               (("EXEC_OSYNC = (.*)")
+                (format #f "EXEC_OSYNC = ~s\n" (which "osync.sh")))))))))
+    (native-inputs
+     `(("git" ,git-minimal)))
+    (inputs
+     `(("libnotify" ,libnotify)
+       ("osync" ,osync)))
+    (propagated-inputs
+     `(("python-pandas" ,python-pandas)
+       ("python-numpy" ,python-numpy)
+       ("python-mpd2" ,python-mpd2)
+       ("python-requests" ,python-requests)
+       ("python-furl" ,python-furl)
+       ("dynaconf" ,dynaconf)))
+    (synopsis "Agent for sqrt-data")
+    (description "Agent for sqrt-data")
+    (home-page "https://github.com/SqrtMinusOne/sqrt-data")
+    (license license:gpl3)))
+#+end_src
+
+Also have to evaluate the variable with the definition for the =-f= flag.
+#+begin_src scheme :tangle (my/org-prj-dir "sqrt-data-agent.scm")
+sqrt-data-agent
+#+end_src
+** Server
+The server part uses Docker because I'm in love with Docker.
+
+The =Dockerfile= for the program:
+#+begin_src dockerfile :tangle (my/org-prj-dir "Dockerfile")
+FROM python:3.10-buster
+# Install sqrt-data
+WORKDIR "app/"
+RUN pip install prefect
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+
+RUN mkdir /tmp/sqrt-data
+#+end_src
+
+The =docker-compose= file:
+#+begin_src yaml :tangle (my/org-prj-dir "docker-compose.yml")
+version: "3.5"
+
+services:
+    postgres:
+        restart: unless-stopped
+        image: postgres
+        container_name: "sqrt-data-postgres"
+        ports:
+            - 5432:5432
+        networks:
+            - postgres
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            POSTGRES_DB: data
+        volumes:
+            - postgres_data:/data/postgres
+    metabase:
+        container_name: "sqrt-data-metabase"
+        restart: unless-stopped
+        image: metabase/metabase
+        ports:
+            - 8083:3000
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            MB_DB_TYPE: postgres
+            MB_DB_DBNAME: metabase
+            MB_DB_PORT: 5432
+            MB_DB_USER: postgres
+            MB_DB_PASS: localdbpass
+            MB_DB_HOST: postgres
+    sqrt_data_orion:
+        container_name: "sqrt-data-orion"
+        build: .
+        ports:
+            - 127.0.0.1:4200:4200
+        restart: unless-stopped
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        command: prefect orion start
+        environment:
+            PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
+            PREFECT_ORION_API_HOST: 0.0.0.0
+
+    sqrt_data_agent:
+        container_name: "sqrt-data-agent"
+        build: .
+        restart: unless-stopped
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        volumes:
+            - type: bind
+              source: ./config.toml
+              target: /config.toml
+            - type: bind
+              source: ~/logs-sync-debug
+              target: /root/logs-sync-debug
+            - ./config.service.local.toml:/app/config.service.local.toml
+        command: prefect agent start -q "main"
+        environment:
+            PREFECT_API_URL: 'http://sqrt_data_orion:4200/api/'
+
+    backups:
+        image: prodrigestivill/postgres-backup-local
+        restart: always
+        volumes:
+            - ./backups:/backups
+        networks:
+            - postgres
+        depends_on:
+            - postgres
+        environment:
+            - POSTGRES_HOST=postgres
+            - POSTGRES_DB=data,metabase,orion
+            - POSTGRES_USER=${POSTGRES_USER}
+            - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+            - POSTGRES_EXTRA_OPTS=-Fc -Z9
+            - SCHEDULE=@daily
+            - BACKUP_KEEP_DAYS=7
+            - BACKUP_KEEP_WEEKS=4
+            - BACKUP_KEEP_MONTHS=2
+            - BACKUP_SUFFIX=.dump
+            - HEALTHCHECK_PORT=8080
+
+networks:
+    postgres:
+        driver: bridge
+
+volumes:
+    postgres_data:
+#+end_src
+
+=.env= file:
+#+begin_src dotenv :tangle (my/org-prj-dir ".env")
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=localdbpass
+#+end_src
+
+** Agent
+Run the following as services:
+#+begin_src bash
+python -m sqrt_data_agent.mpd
+#+end_src
+
+And run that with cron every hour:
+#+begin_src bash
+python -m sqrt_data_agent.sync
+#+end_src

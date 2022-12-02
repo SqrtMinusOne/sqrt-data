@@ -6,46 +6,45 @@
 
 [[https://forthebadge.com/images/badges/works-on-my-machine.svg]]
 
-This is an agglomeration of self-quantification scripts I've written over the years.
+#+begin_quote
+I'd name this "Electric Boogaloo", but the window of opportunity for that is long gone.
+#+end_quote
 
-The basic principles are:
-- I don't want to do a lot of (or any) manual work to collect the data. I'd rather have tools collect statistics in the background so I could process them later.
-- The tools have to be able to give away the data in machine-readable formats.
-- Wherever possible, I want to own my data.
+These are some of my personal data aggregation scripts.
 
-It's unlikely that you'll be able to run the project as it is, as it's tuned to my particular workflows and needs (hence the badge). Nevertheless, you may find something useful here.
+The project is written using [[https://en.wikipedia.org/wiki/Literate_programming][literate programming]] paradigm with Emacs' [[https://orgmode.org/worg/org-contrib/babel/intro.html][Org Mode]] as the engine and semi-broken English for comments. Not sure if it was worth it at this point, but it seems to work.
 
-The project is written with [[https://en.wikipedia.org/wiki/Literate_programming][literate programming]] paradigm with Emacs' [[https://orgmode.org/worg/org-contrib/babel/intro.html][Org Mode]] as an engine.
+* Synopsis
+The basic dataflow is as follows:
+- Data from various sources is saved to the folder called =logs-sync= in machine-readable formats (mostly CSV)
+- The folder gets rsynced to my VPS
+- The VPS processes that with [[https://docs.prefect.io/][Prefect 2]] flows and stores the results to a PostgreSQL database
+- [[https://www.metabase.com/][Metabase]] queries the database and creates nice dashboards.
 
-* Idea
-The main idea is as follows:
+The entire thing is written in Python and more or less follows the path of least resistance.
 
-- The data from various datasources is saved in machine-readable formats to a folder that gets rsynced to my VPS.
-- A Docker container on that VPS runs cron jobs to process files in this folder and stores the data to a PostgreSQL database.
-- [[https://www.metabase.com/][Metabase]] queries the data and presents me with nice charts and dashboards.
-
-The entire thing is written in Python and more or less follows the path of least resistance. So solutions used here won't scale to the volumes of Big Data. Some may even need a rewrite in a few years if I somehow make it that far.
+Yeah, and it most definitely won't work for anyone except me.
 
 * Project structure
-Here's a rough outline of the project structure and used data sources.
+The common functionality resides in [[file:org/core-new.org][core-new.org]] (once upon a time it had to coexist with =core.org=).
 
-First, some files that aren't related to any particular data source:
-- [[file:org/core.org][core.org]]. Parts of functionality used in the entire project: CLI, the core API and deploy instructions.
-- [[file:org/service.org][service.org]]. Some service things, for instance, compressing old logs.
+[[file:org/service.org][service.org]] runs maintainence flows, such as gzipping old files.
 
-Second, files related to various datasources:
-| File               | Data source                                            | Automation |
-|--------------------+--------------------------------------------------------+------------|
-| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]] (Desktop)                                | Complete   |
-| [[file:org/mpd.org][mpd.org]]            | [[https://www.musicpd.org/][Music Player Daemon]] (or my [[https://github.com/SqrtMinusOne/mpd-watcher][mpd-watcher]], to be precise) | Complete   |
-| [[file:org/locations.org][locations.org]]      | My CSV with location history                           | Complete   |
-| [[file:org/wakatime.org][wakatime.org]]       | [[https://wakatime.org][WakaTime]].                                              | Partial    |
-| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]] (Android)                                | Partial    |
-| [[file:org/sleep.org][sleep.org]]          | [[https://sleep.urbandroid.org/][Sleep As Android]]                                       | Manual     |
-| [[file:org/google-android.org][google-android.org]] | [[https://takeout.google.com/][Google Takeout]], Android activity                       | Manual     |
-| [[file:org/vk.org][vk.org]]             | [[https://vk.com][VK]], GDPR dump                                          | Manual     |
+Some files are related to particular datasources:
+| File               | Data source                       | Automation | Status                     |
+|--------------------+-----------------------------------+------------+----------------------------|
+| [[file:org/aw.org][aw.org]]             | [[https://activitywatch.net/][ActivityWatch]] (Desktop & Android) | Complete   | OK                         |
+| [[file:org/mpd.org][mpd.org]]            | [[https://www.musicpd.org/][Music Player Daemon]]               | Complete   | OK                         |
+| [[file:org/locations.org][locations.org]]      | My CSVs with location history     | Complete   | OK                         |
+| [[file:org/wakatime.org][wakatime.org]]       | [[https://wakatime.org][WakaTime]]                          | Partial    | OK                         |
+| [[file:org/vk.org][vk.org]]             | [[https://vk.com][VK]], GDPR dump                     | Manual     | Left the network, whatever |
+| [[file:org/archive/sleep.org][sleep.org]]          | [[https://sleep.urbandroid.org/][Sleep As Android]]                  | Manual     | Archive                    |
+| [[file:org/archive/google-android.org][google-android.org]] | [[https://takeout.google.com/][Google Takeout]], Android activity  | Manual     | Archive                    |
 
 "Automation" means:
 - *Complete* - no manual actions required
 - *Partial* - some manual action required
-- *Manual* - manually retrieve the required data and feed it to the app
+- *Manual* - manually retrieve the required data and feed it to the project
+
+In some files I tried to aggregate data from multiple datasources:
+- [[file:org/archive/youtube.org][youtube.org]] (/Archive/) - here I tried to join data from MPV, YouTube watch history, ActivityWatch and NewPipe to figure out what I was watching. Didn't work out that well, maybe I'll return to it someday.

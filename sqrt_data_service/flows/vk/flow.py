@@ -1,23 +1,4 @@
-#+TITLE: VK data
-#+PROPERTY: header-args :mkdirp yes
-#+PROPERTY: header-args:python :comments link
-#+PROPERTY: PRJ-DIR ..
-
-[[https://vk.com][Vk.com]] is rather totalitarian in terms of (not) giving the user a voice on what to do with their data, but even they are forced by GDPR to [[https://vk.com/data_protection?lang=en&section=rules][provide a copy of what they have on you]].
-
-Also, I don't use the platform for anything but messaging, so I won't parse anything else.
-
-Edit <2022-11-28>: I've left the platform, but I keep the this file to merge data with other messengers.
-
-* Flow
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/vk/flow.py") :comments link
-:END:
-
-The dump itself is a set of HTML files, which is a bit awkward to parse.
-
-So, the imports:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:1]]
 import argparse
 import pandas as pd
 import os
@@ -30,12 +11,9 @@ from collections import deque
 from dateutil import parser
 from prefect import task, flow, get_run_logger
 from tqdm import tqdm
-#+end_src
+# Flow:1 ends here
 
-I don't understand why some dumps have labels in English and some in Russian. The only important difference between the versions is in the date format anyway.
-
-So here is the English version:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:2]]
 def parse_date_english(date):
     is_edited = False
     if date.endswith(' (edited)'):
@@ -44,10 +22,9 @@ def parse_date_english(date):
     date = date[2:]
     date = parser.parse(date)
     return is_edited, date
-#+end_src
+# Flow:2 ends here
 
-And the Russian one:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:3]]
 MONTHS = [
     'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя',
     'дек'
@@ -64,19 +41,9 @@ def parse_date_russian(date):
     month = MONTHS.index(month) + 1
     date = parser.parse(time).replace(day=int(day), month=month, year=int(year))
     return is_edited, date
-#+end_src
+# Flow:3 ends here
 
-The dump is structured as follows: the root folder has the "messages" folder. The latter has one directory per target, and the individual directory has a set of HTML files with messages.
-
-So, the following function parses one HTML file. It returns a DataFrame with the following columns:
-- =name= - user/chat name
-- =sender=
-- =is_outgoing= - whether you are the sender
-- =date=
-- =message=
-- =is_edited=
-
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:4]]
 def parse_file(path):
     with open(path, 'r', encoding='windows-1251') as f:
         soup = BeautifulSoup(f, features="html.parser")
@@ -123,10 +90,9 @@ def parse_file(path):
         }
     )
     return df
-#+end_src
+# Flow:4 ends here
 
-Next, parse the directory for a single target:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:5]]
 @task
 def parse_directory(path):
     logger = get_run_logger()
@@ -150,10 +116,9 @@ def parse_directory(path):
         df.is_outgoing = df.is_outgoing.astype(bool)
         df.is_edited = df.is_edited.astype(bool)
     return df
-#+end_src
+# Flow:5 ends here
 
-And store that in the database:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:6]]
 @task
 def store_directory(df):
     DBConn()
@@ -163,10 +128,9 @@ def store_directory(df):
         con=DBConn.engine,
         if_exists='append'
     )
-#+end_src
+# Flow:6 ends here
 
-The flow that calls the task for each element:
-#+begin_src python
+# [[file:../../../org/vk.org::*Flow][Flow:7]]
 @flow
 def vk_load(directory):
     DBConn()
@@ -189,37 +153,4 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--path', required=True)
     args = parser.parse_args()
     vk_load(args.path)
-#+end_src
-
-* Deploy
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/vk/deploy.py") :comments link
-:END:
-
-Create the deployment:
-#+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
-
-from sqrt_data_service.api import settings
-from .flow import vk_load
-
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=vk_load,
-        name="vk_load",
-        work_queue_name=settings.prefect.queue,
-        parameters={"directory": '/home/pavel/logs-not-sync/vk'}
-    )
-    deployment.apply()
-
-if __name__ == '__main__':
-    create_deploy()
-#+end_src
-
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.vk.deploy
-#+end_src
-
-To create a deployment until I've found a better way.
+# Flow:7 ends here

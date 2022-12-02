@@ -1,0 +1,56 @@
+dynaconf_merge = true
+
+[database]
+user = 'postgres'
+password = 'localdbpass'
+database = 'data'
+host = 'localhost'
+port = 5432
+
+[general]
+root = '@format {env[HOME]}/logs-sync-debug'
+temp_data_folder = '/tmp/sqrt-data'
+cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
+
+[prefect]
+queue = 'main'
+
+[archive]
+days = 31
+timeout = 5
+exclude_dirs = ['@format {this.general.root}/android-misc', '@format {this.general.root}/youtube']
+
+[waka]
+api_key = 'dummy'
+api_url = 'https://wakatime.com/api/v1'
+schema = 'wakatime'
+
+[mpd]
+library_csv = '@format {this.general.root}/mpd/mpd_library.csv'
+log_folder = '@format {this.general.root}/mpd/logs'
+
+[aw]
+last_updated = '@format {this.general.root}/aw_last_updated.json'
+logs_folder = '@format {this.general.root}/aw'
+android_file = '@format {this.general.root}/android-misc/aw-buckets-export.json'
+types = ['afkstatus', 'currentwindow', 'web.tab.current', 'app.editor.activity']
+schema = 'aw'
+skip_afk_interval = '900'
+skip_afk_apps = '^(zoom|mpv)$'
+skip_afk_titles = '(YouTube)'
+webtab_apps = '^(Nightly|firefox)$'
+skip_urls = '^(moz-extension|about:blank)'
+
+[aw.apps_convert]
+Nightly = 'firefox'
+Chromium-browser = 'Chromium'
+unknown = 'Emacs' # EXWM
+
+[vk]
+author = 'Pavel Korytov'
+schema = 'vk'
+
+[location]
+list_csv = '@format {this.general.root}/csv/locations.csv'
+tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
+hostnames_csv = '@format {this.general.root}/csv/loc_hostnames.csv'
