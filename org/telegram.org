@@ -133,7 +133,7 @@ def create_deploy():
         flow=telegram_load,
         name="telegram_load",
         work_queue_name=settings.prefect.queue,
-        parameters={"directory": '/home/pavel/logs-not-sync/telegram.json'}
+        parameters={"file_name": '/home/pavel/logs-not-sync/telegram.json'}
     )
     deployment.apply()
 
