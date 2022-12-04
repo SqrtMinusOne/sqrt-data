@@ -1,0 +1,149 @@
+#+TITLE: Misc messengers
+#+PROPERTY: header-args :mkdirp yes
+#+PROPERTY: header-args:python :comments link
+#+PROPERTY: PRJ-DIR ..
+
+* Telegram
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/telegram.py") :comments link
+:END:
+Probably the easiest messenger export I've seen.
+
+#+begin_src python
+import argparse
+import json
+import pandas as pd
+import sqlalchemy as sa
+from prefect import task, flow, get_run_logger
+from collections import deque
+
+from sqrt_data_service.api import settings, DBConn
+#+end_src
+
+Parse the JSON. The structure is more or less self-explanatory, there are lots of "about" fields, etc.
+
+#+begin_src python
+@task
+def parse_json(file_name):
+    with open(file_name) as f:
+        data = json.load(f)
+
+    me_id = f'user{data["personal_information"]["user_id"]}'
+    me = ' '.join(
+        [
+            data["personal_information"]["first_name"],
+            data["personal_information"]["last_name"]
+        ]
+    )
+    messages = deque()
+
+    for chat in data['chats']['list']:
+        if chat['id'] in settings.telegram.exclude_ids or chat[
+            'type'] == 'saved_messages':
+            continue
+        name = chat['name']
+        is_group = chat['type'] != 'personal_chat'
+
+        for message in chat['messages']:
+            if message['type'] != 'message':
+                continue
+            text = message['text']
+            if isinstance(text, list):
+                text = ' '.join(
+                    [
+                        token['text'] if isinstance(token, dict) else token
+                        for token in text
+                    ]
+                )
+            is_outgoing = message['from_id'] == me_id
+            if is_group:
+                target = name
+            elif not is_outgoing:
+                target = message['from']
+            else:
+                target = me
+            messages.append(
+                {
+                    'target': target,
+                    'sender': message['from'],
+                    'is_outgoing': is_outgoing,
+                    'is_group': is_group,
+                    'message': text,
+                    'date': message['date'],
+                    'is_edited': 'edited' in message
+                }
+            )
+
+    return pd.DataFrame(messages)
+#+end_src
+
+Store the dataframe.
+#+begin_src python
+@task
+def store_df(df):
+    DBConn()
+    with DBConn.get_session() as db:
+        db.execute(sa.text('create schema if not exists "messengers"'))
+        exists = db.execute(
+            sa.text(
+                "select exists(select from information_schema.tables where table_schema = 'messengers' and table_name = 'telegram')"
+            )
+        ).scalar_one()
+        if exists:
+            db.execute(sa.text('truncate table messengers.telegram'))
+        db.commit()
+
+    df.to_sql(
+        'telegram', schema='messengers', con=DBConn.engine, if_exists='append'
+    )
+#+end_src
+
+The final flow:
+#+begin_src python
+@flow
+def telegram_load(file_name):
+    df = parse_json(file_name)
+    store_df(df)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        prog='sqrt_data_service.flows.messengers.telegram'
+    )
+    parser.add_argument('-p', '--path', required=True)
+    args = parser.parse_args()
+    telegram_load(args.path)
+#+end_src
+
+* Deploy
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/deploy.py") :comments link
+:END:
+
+Create the deployment:
+#+begin_src python
+from prefect.deployments import Deployment
+from prefect.orion.schemas.schedules import CronSchedule
+
+from sqrt_data_service.api import settings
+from .telegram import telegram_load
+
+def create_deploy():
+    deployment = Deployment.build_from_flow(
+        flow=telegram_load,
+        name="telegram_load",
+        work_queue_name=settings.prefect.queue,
+        parameters={"directory": '/home/pavel/logs-not-sync/telegram.json'}
+    )
+    deployment.apply()
+
+if __name__ == '__main__':
+    create_deploy()
+#+end_src
+
+Run the following:
+#+begin_src bash :tangle no
+python -m sqrt_data_service.flows.vk.deploy
+#+end_src
+
+To create a deployment until I've found a better way.

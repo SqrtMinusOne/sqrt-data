@@ -3,6 +3,7 @@ import argparse
 import pandas as pd
 import os
 import sys
+import sqlalchemy as sa
 
 from sqrt_data_service.api import DBConn, settings
 
@@ -56,6 +57,7 @@ def parse_file(path):
                         ).find(class_='wrap_page_content')
 
     senders, dates, messages, edited = deque(), deque(), deque(), deque()
+    is_group = None
 
     for item in items.find_all(class_='item'):
         header = item.div.find(class_='message__header')
@@ -77,6 +79,12 @@ def parse_file(path):
             messages.append(message)
             edited.append(is_edited)
 
+            if is_group is None and author == name:
+                is_group = False
+
+    if is_group is None:
+        is_group = True
+
     global_author = settings['vk']['author']
 
     df = pd.DataFrame(
@@ -86,7 +94,8 @@ def parse_file(path):
             "is_outgoing": [s == 'You' for s in senders],
             "message": messages,
             "date": dates,
-            "is_edited": edited
+            "is_edited": edited,
+            "is_group": is_group
         }
     )
     return df
@@ -104,7 +113,8 @@ def parse_directory(path):
             'is_outgoing': pd.Series(dtype='bool'),
             'message': pd.Series(dtype='str'),
             'date': pd.Series(dtype='datetime64[ns]'),
-            'is_edited': pd.Series(dtype='bool')
+            'is_edited': pd.Series(dtype='bool'),
+            'is_group': pd.Series(dtype='bool')
         }
     )
     for file in files:
@@ -134,8 +144,17 @@ def store_directory(df):
 @flow
 def vk_load(directory):
     DBConn()
-    DBConn.engine.execute(f'DROP SCHEMA IF EXISTS {settings["vk"]["schema"]} CASCADE')
-    DBConn.create_schema(settings["vk"]["schema"])
+    schema = settings["vk"]["schema"]
+    with DBConn.get_session() as db:
+        db.execute(sa.text(f'create schema if not exists "{schema}"'))
+        exists = db.execute(
+            sa.text(
+                f"select exists(select from information_schema.tables where table_schema = '{schema}' and table_name = 'messages')"
+            )
+        ).scalar_one()
+        if exists:
+            db.execute(sa.text(f'truncate table {schema}.messages'))
+        db.commit()
 
     futures = []
 
@@ -147,10 +166,10 @@ def vk_load(directory):
         store_directory(df)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
+    arg_parser = argparse.ArgumentParser(
         prog='sqrt_data_service.flows.vk.flow'
     )
-    parser.add_argument('-p', '--path', required=True)
-    args = parser.parse_args()
+    arg_parser.add_argument('-p', '--path', required=True)
+    args = arg_parser.parse_args()
     vk_load(args.path)
 # Flow:7 ends here

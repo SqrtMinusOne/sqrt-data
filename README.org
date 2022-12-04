@@ -37,6 +37,7 @@ Some files are related to particular datasources:
 | [[file:org/mpd.org][mpd.org]]            | [[https://www.musicpd.org/][Music Player Daemon]]               | Complete   | OK                         |
 | [[file:org/locations.org][locations.org]]      | My CSVs with location history     | Complete   | OK                         |
 | [[file:org/wakatime.org][wakatime.org]]       | [[https://wakatime.org][WakaTime]]                          | Partial    | OK                         |
+| [[file:org/messengers.org][messengers.org]]     | Telegram + aggegation             | Manual     | OK                         |
 | [[file:org/vk.org][vk.org]]             | [[https://vk.com][VK]], GDPR dump                     | Manual     | Left the network, whatever |
 | [[file:org/archive/sleep.org][sleep.org]]          | [[https://sleep.urbandroid.org/][Sleep As Android]]                  | Manual     | Archive                    |
 | [[file:org/archive/google-android.org][google-android.org]] | [[https://takeout.google.com/][Google Takeout]], Android activity  | Manual     | Archive                    |

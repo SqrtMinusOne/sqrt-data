@@ -94,6 +94,9 @@ unknown = 'Emacs' # EXWM
 author = 'Pavel Korytov'
 schema = 'vk'
 
+[telegram]
+exclude_ids = [1382682943]
+
 [location]
 list_csv = '@format {this.general.root}/csv/locations.csv'
 tz_csv = '@format {this.general.root}/csv/loc_timezones.csv'
