@@ -23,13 +23,46 @@ def load_mapping():
     )
 # Aggregation:2 ends here
 
-# [[file:../../../org/messengers.org::*Aggregation][Aggregation:3]]
+# [[file:../../../org/messengers.org::*Aggregation][Aggregation:4]]
+MSG_VIEWS = """
+CREATE OR REPLACE VIEW messengers.all_messages AS
+(
+SELECT target, sender, is_outgoing, date_trunc('day', date)::date date, is_group, 'vk' messenger
+FROM vk.messages
+UNION ALL
+SELECT coalesce(M.vk, T.target)      target,
+       coalesce(M2.vk, T.sender)     sender,
+       is_outgoing,
+       date_trunc('day', date)::date date,
+       is_group,
+       'telegram'                    messenger
+FROM messengers.telegram T
+         LEFT JOIN messengers.mapping M ON M.telegram = T.target
+         LEFT JOIN messengers.mapping M2 ON M2.telegram = T.sender
+    );
+
+CREATE OR REPLACE VIEW messengers.aggregate AS
+SELECT target, sender, is_outgoing, is_group, date, messenger, count(*) count
+FROM messengers.all_messages
+GROUP BY target, sender, is_outgoing, is_group, date, messenger
+ORDER BY date DESC;
+"""
+
+@task
+def create_views():
+    with DBConn.get_session() as db:
+        db.execute(MSG_VIEWS)
+        db.commit()
+# Aggregation:4 ends here
+
+# [[file:../../../org/messengers.org::*Aggregation][Aggregation:5]]
 @flow
 def messengers_aggregate():
     DBConn()
     load_mapping()
+    create_views()
 
 
 if __name__ == '__main__':
     messengers_aggregate()
-# Aggregation:3 ends here
+# Aggregation:5 ends here

@@ -43,6 +43,14 @@ def parse_json(file_name):
             continue
         name = chat['name']
         is_group = chat['type'] != 'personal_chat'
+        target = name
+        if is_group is False:
+            for message in chat['messages']:
+                if message['type'] != 'message':
+                    continue
+                if message['from_id'] != me_id:
+                    target = message['from']
+                    break
 
         for message in chat['messages']:
             if message['type'] != 'message':
@@ -56,12 +64,6 @@ def parse_json(file_name):
                     ]
                 )
             is_outgoing = message['from_id'] == me_id
-            if is_group:
-                target = name
-            elif not is_outgoing:
-                target = message['from']
-            else:
-                target = me
             messages.append(
                 {
                     'target': target,
@@ -145,6 +147,43 @@ def load_mapping():
     )
 #+end_src
 
+Create aggregate views.
+#+begin_src sql :noweb-ref msg-views
+CREATE OR REPLACE VIEW messengers.all_messages AS
+(
+SELECT target, sender, is_outgoing, date_trunc('day', date)::date date, is_group, 'vk' messenger
+FROM vk.messages
+UNION ALL
+SELECT coalesce(M.vk, T.target)      target,
+       coalesce(M2.vk, T.sender)     sender,
+       is_outgoing,
+       date_trunc('day', date)::date date,
+       is_group,
+       'telegram'                    messenger
+FROM messengers.telegram T
+         LEFT JOIN messengers.mapping M ON M.telegram = T.target
+         LEFT JOIN messengers.mapping M2 ON M2.telegram = T.sender
+    );
+
+CREATE OR REPLACE VIEW messengers.aggregate AS
+SELECT target, sender, is_outgoing, is_group, date, messenger, count(*) count
+FROM messengers.all_messages
+GROUP BY target, sender, is_outgoing, is_group, date, messenger
+ORDER BY date DESC;
+#+end_src
+
+#+begin_src python :noweb yes
+MSG_VIEWS = """
+<<msg-views>>
+"""
+
+@task
+def create_views():
+    with DBConn.get_session() as db:
+        db.execute(MSG_VIEWS)
+        db.commit()
+#+end_src
+
 The flow.
 
 #+begin_src python
@@ -152,6 +191,7 @@ The flow.
 def messengers_aggregate():
     DBConn()
     load_mapping()
+    create_views()
 
 
 if __name__ == '__main__':

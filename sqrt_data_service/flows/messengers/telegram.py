@@ -30,6 +30,14 @@ def parse_json(file_name):
             continue
         name = chat['name']
         is_group = chat['type'] != 'personal_chat'
+        target = name
+        if is_group is False:
+            for message in chat['messages']:
+                if message['type'] != 'message':
+                    continue
+                if message['from_id'] != me_id:
+                    target = message['from']
+                    break
 
         for message in chat['messages']:
             if message['type'] != 'message':
@@ -43,12 +51,6 @@ def parse_json(file_name):
                     ]
                 )
             is_outgoing = message['from_id'] == me_id
-            if is_group:
-                target = name
-            elif not is_outgoing:
-                target = message['from']
-            else:
-                target = me
             messages.append(
                 {
                     'target': target,
