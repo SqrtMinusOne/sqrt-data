@@ -61,7 +61,9 @@ def parse_json(file_name):
                 }
             )
 
-    return pd.DataFrame(messages)
+    df = pd.DataFrame(messages)
+    df.date = df.date.astype('datetime64[ns]')
+    return df
 # Telegram:2 ends here
 
 # [[file:../../../org/messengers.org::*Telegram][Telegram:3]]

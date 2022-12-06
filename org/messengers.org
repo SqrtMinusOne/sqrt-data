@@ -74,7 +74,9 @@ def parse_json(file_name):
                 }
             )
 
-    return pd.DataFrame(messages)
+    df = pd.DataFrame(messages)
+    df.date = df.date.astype('datetime64[ns]')
+    return df
 #+end_src
 
 Store the dataframe.
