@@ -94,7 +94,10 @@ unknown = 'Emacs' # EXWM
 author = 'Pavel Korytov'
 schema = 'vk'
 
-[telegram]
+[messengers]
+mapping_file = '@format {this.general.root}/csv/chat-mapping.csv'
+
+[messengers.telegram]
 exclude_ids = [1382682943]
 
 [location]
@@ -114,7 +117,7 @@ Here's the class that has been into a lot of my projects.
 #+begin_src python :noweb yes :tangle (my/org-prj-dir "sqrt_data_service/api/db.py")
 import logging
 from contextlib import contextmanager
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from .config import settings
@@ -196,7 +199,7 @@ def get_engine(**kwargs):
     return create_engine(url, **kwargs)
 #+end_src
 
-Finally, a method to create tables in a given schema.
+The method to create tables in a given schema.
 #+begin_src python :noweb-ref db-dbconn :tangle no
 @staticmethod
 def create_schema(schema, Base=None):
@@ -207,6 +210,19 @@ def create_schema(schema, Base=None):
             if table.schema == schema:
                 tables.append(table)
         Base.metadata.create_all(DBConn.engine, tables)
+#+end_src
+
+Also, check if a table exists.
+#+begin_src python :noweb-ref db-dbconn :tangle no
+@staticmethod
+def table_exists(table, schema, db=None):
+    with DBConn.ensure_session(db) as db:
+        exists = db.execute(
+            text(
+                f"select exists(select from information_schema.tables where table_schema = '{schema}' and table_name = '{table}')"
+            )
+        ).scalar_one()
+        return exists
 #+end_src
 
 *** Models

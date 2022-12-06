@@ -1,4 +1,4 @@
-# [[file:../../../org/telegram.org::*Telegram][Telegram:1]]
+# [[file:../../../org/messengers.org::*Telegram][Telegram:1]]
 import argparse
 import json
 import pandas as pd
@@ -9,7 +9,7 @@ from collections import deque
 from sqrt_data_service.api import settings, DBConn
 # Telegram:1 ends here
 
-# [[file:../../../org/telegram.org::*Telegram][Telegram:2]]
+# [[file:../../../org/messengers.org::*Telegram][Telegram:2]]
 @task
 def parse_json(file_name):
     with open(file_name) as f:
@@ -25,7 +25,7 @@ def parse_json(file_name):
     messages = deque()
 
     for chat in data['chats']['list']:
-        if chat['id'] in settings.telegram.exclude_ids or chat[
+        if chat['id'] in settings.messengers.telegram.exclude_ids or chat[
             'type'] == 'saved_messages':
             continue
         name = chat['name']
@@ -64,17 +64,13 @@ def parse_json(file_name):
     return pd.DataFrame(messages)
 # Telegram:2 ends here
 
-# [[file:../../../org/telegram.org::*Telegram][Telegram:3]]
+# [[file:../../../org/messengers.org::*Telegram][Telegram:3]]
 @task
 def store_df(df):
     DBConn()
     with DBConn.get_session() as db:
         db.execute(sa.text('create schema if not exists "messengers"'))
-        exists = db.execute(
-            sa.text(
-                "select exists(select from information_schema.tables where table_schema = 'messengers' and table_name = 'telegram')"
-            )
-        ).scalar_one()
+        exists = DBConn.table_exists('telegram', 'messengers', db)
         if exists:
             db.execute(sa.text('truncate table messengers.telegram'))
         db.commit()
@@ -84,7 +80,7 @@ def store_df(df):
     )
 # Telegram:3 ends here
 
-# [[file:../../../org/telegram.org::*Telegram][Telegram:4]]
+# [[file:../../../org/messengers.org::*Telegram][Telegram:4]]
 @flow
 def telegram_load(file_name):
     df = parse_json(file_name)

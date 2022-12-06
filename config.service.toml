@@ -50,7 +50,10 @@ unknown = 'Emacs' # EXWM
 author = 'Pavel Korytov'
 schema = 'vk'
 
-[telegram]
+[messengers]
+mapping_file = '@format {this.general.root}/csv/chat-mapping.csv'
+
+[messengers.telegram]
 exclude_ids = [1382682943]
 
 [location]

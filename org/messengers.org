@@ -1,4 +1,4 @@
-#+TITLE: Misc messengers
+#+TITLE: Messengers & aggregation
 #+PROPERTY: header-args :mkdirp yes
 #+PROPERTY: header-args:python :comments link
 #+PROPERTY: PRJ-DIR ..
@@ -38,7 +38,7 @@ def parse_json(file_name):
     messages = deque()
 
     for chat in data['chats']['list']:
-        if chat['id'] in settings.telegram.exclude_ids or chat[
+        if chat['id'] in settings.messengers.telegram.exclude_ids or chat[
             'type'] == 'saved_messages':
             continue
         name = chat['name']
@@ -84,11 +84,7 @@ def store_df(df):
     DBConn()
     with DBConn.get_session() as db:
         db.execute(sa.text('create schema if not exists "messengers"'))
-        exists = db.execute(
-            sa.text(
-                "select exists(select from information_schema.tables where table_schema = 'messengers' and table_name = 'telegram')"
-            )
-        ).scalar_one()
+        exists = DBConn.table_exists('telegram', 'messengers', db)
         if exists:
             db.execute(sa.text('truncate table messengers.telegram'))
         db.commit()
@@ -115,6 +111,51 @@ if __name__ == '__main__':
     telegram_load(args.path)
 #+end_src
 
+* Aggregation
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/aggregate.py") :comments link
+:END:
+Some logic to aggregate all the processed messengers.
+
+#+begin_src python
+import argparse
+import json
+import pandas as pd
+import sqlalchemy as sa
+from prefect import task, flow, get_run_logger
+
+from sqrt_data_service.api import settings, DBConn
+#+end_src
+
+Load the mapping file.
+#+begin_src python
+@task
+def load_mapping():
+    df = pd.read_csv(settings.messengers.mapping_file)
+    with DBConn.get_session() as db:
+        exists = DBConn.table_exists('mapping', 'messengers', db)
+        if exists:
+            db.execute(sa.text('truncate table messengers.mapping'))
+        db.commit()
+
+    df.to_sql(
+        'mapping', schema='messengers', con=DBConn.engine, if_exists='append'
+    )
+#+end_src
+
+The flow.
+
+#+begin_src python
+@flow
+def messengers_aggregate():
+    DBConn()
+    load_mapping()
+
+
+if __name__ == '__main__':
+    messengers_aggregate()
+#+end_src
+
 * Deploy
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/deploy.py") :comments link
@@ -127,15 +168,23 @@ from prefect.orion.schemas.schedules import CronSchedule
 
 from sqrt_data_service.api import settings
 from .telegram import telegram_load
+from .aggregate import messengers_aggregate
 
 def create_deploy():
-    deployment = Deployment.build_from_flow(
+    deployment_1 = Deployment.build_from_flow(
         flow=telegram_load,
         name="telegram_load",
         work_queue_name=settings.prefect.queue,
         parameters={"file_name": '/home/pavel/logs-not-sync/telegram.json'}
     )
-    deployment.apply()
+    deployment_1.apply()
+
+    deployment_2 = Deployment.build_from_flow(
+        flow=messengers_aggregate,
+        name="messengers_aggregate",
+        work_queue_name=settings.prefect.queue
+    )
+    deployment_2.apply()
 
 if __name__ == '__main__':
     create_deploy()

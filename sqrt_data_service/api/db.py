@@ -1,7 +1,7 @@
 # [[file:../../org/core-new.org::*Connection][Connection:1]]
 import logging
 from contextlib import contextmanager
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from .config import settings
@@ -60,4 +60,13 @@ class DBConn:
                 if table.schema == schema:
                     tables.append(table)
             Base.metadata.create_all(DBConn.engine, tables)
+    @staticmethod
+    def table_exists(table, schema, db=None):
+        with DBConn.ensure_session(db) as db:
+            exists = db.execute(
+                text(
+                    f"select exists(select from information_schema.tables where table_schema = '{schema}' and table_name = '{table}')"
+                )
+            ).scalar_one()
+            return exists
 # Connection:1 ends here
