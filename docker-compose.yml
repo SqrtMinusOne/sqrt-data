@@ -32,6 +32,7 @@ services:
             MB_DB_USER: ${POSTGRES_USER}
             MB_DB_PASS: ${POSTGRES_PASSWORD}
             MB_DB_HOST: postgres
+            JAVA_OPTS: "-Dc3p0.maxPoolSize=5 "
     sqrt_data_orion:
         container_name: "sqrt-data-orion"
         build: .
