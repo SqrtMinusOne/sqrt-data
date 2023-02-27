@@ -28,6 +28,8 @@ class FileHasher:
         DBConn()
 
     def is_updated(self, file_name, db=None):
+        if not os.path.exists(file_name):
+            return False
         with DBConn.ensure_session(db) as db:
             saved = db.execute(
                 sa.select(FileHash).where(FileHash.file_name == file_name)
