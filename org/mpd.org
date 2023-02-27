@@ -33,7 +33,7 @@ from mpd import MPDClient
 from sqrt_data_agent.api import settings
 #+end_src
 
-Using [[https://stackoverflow.com/a/7758075][this StackOverflow answser]] to prevent the daemon from being launched multiple times. Works only on Linux.
+Using [[https://stackoverflow.com/a/7758075][this StackOverflow answer]] to prevent the daemon from being launched multiple times. Works only on Linux.
 
 #+begin_src python
 def get_lock(process_name):
@@ -405,7 +405,7 @@ def put_log(filename):
         db.commit()
 #+end_src
 
-** Postprocessing
+** Post-processing
 Create a view to make things a bit easier for Metabase:
 #+begin_src sql :noweb-ref mpd-view
 drop view if exists mpd."MpdSongListened";

@@ -7,7 +7,7 @@ Working with my location history. I don't move around too much, but it's still i
 
 Also, [[file:aw.org][ActivityWatch]] and some other apps store the timestamps in UTC, so this data is required to fix the timezone.
 
-Storing this is the database won't be convinient, so I just manage a handful of [[https://sqrtminusone.xyz/configs/emacs/#managing-tables][CSV files with Org Mode]].
+Storing this is the database won't be convenient, so I just manage a handful of [[https://sqrtminusone.xyz/configs/emacs/#managing-tables][CSV files with Org Mode]].
 
 * Matching locations
 :PROPERTIES:

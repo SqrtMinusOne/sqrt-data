@@ -155,7 +155,7 @@ The [[https://docs.activitywatch.net/en/latest/buckets-and-events.html][data mod
 - =type= - type of events in bucket
 - =client= - ID of the client software
 - =hostname=
-and a list of events.
+And a list of events.
 
 One event has the following attributes:
 - =timestamp=
@@ -185,7 +185,7 @@ And in the following types on Android.
   - =classname=
   - =package=
 
-Also (thanks [[https://github.com/ErikBjare][Erik]] for the comment), AW stores timestamps in the UTC format, so I add the =location= field to convert the timestamps as necessary.
+Also, (thanks [[https://github.com/ErikBjare][Erik]] for the comment), AW stores timestamps in the UTC format, so I add the =location= field to convert the timestamps as necessary.
 
 ** Source models
 I don't get to use model inheritance all to often, but seems like it's one case.
@@ -315,7 +315,7 @@ from .android_currentwindow import *
 * Flows
 The corresponding =__init__.py=:
 
-** Loading (Dekstop)
+** Loading (Desktop)
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/load.py") :comments link
 :END:
@@ -497,7 +497,7 @@ def get_dataframes(db):
     return dfs_by_type
 #+end_src
 
-Also pre-processing the records.
+Also, pre-processing the records.
 #+begin_src python
 @task(name='aw-android-get-records')
 def get_records(type_, df):
@@ -548,13 +548,13 @@ Execute the flow:
 if __name__ == '__main__':
     aw_load_android()
 #+end_src
-** Postprocessing
+** Post-processing
 :PROPERTIES:
 :header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/postprocessing.py") :comments link
 :header-args:sql: :noweb-ref postprocess-sql
 :END:
 
-The postprocessing logic turned out to be rather complex... But well.
+The post-processing logic turned out to be rather complex... But well.
 
 One issue is that data from ActivityWatch is somewhat scattered, so the following operations are necessary:
 1. filter active windows by not-afk status
@@ -597,9 +597,9 @@ $$;
 Next, filter the list of active windows. If:
 - the interval of using a program overlaps with the interval of being non-afk, or
 - the interval of using a specified program (=aw.skip.afk.apps=, =aw.skip_afk_titles=) overlaps with the interval of being afk less than =aw.skip_afk_interval=
-add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
+Add that interval to the resulting table. The duration of the new interval is the duration of the overlap.
 
-After some time, I've decided to add the invervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, the function to check the AFK status:
+After some time, I've decided to add the intervals of /being/ AFK to this table as well, but with title & app equal to =AFK=. So first, the function to check the AFK status:
 #+begin_src sql
 drop function if exists aw.is_afk;
 create function aw.is_afk(status bool, duration float, app text, title text) returns bool
@@ -818,7 +818,7 @@ def aw_postprocessing_dispatch():
         db.commit()
 #+end_src
 ** Final flow
-Thw flow that executes all other flows.
+The flow that executes all other flows.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/main.py") :comments link
 import argparse

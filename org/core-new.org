@@ -19,7 +19,7 @@ from .hash import *
 ** Configuration
 Let's start with configuration. I like the [[https://www.dynaconf.com/][dynaconf]] library to manage my Python configs.
 
-It's convinient enough but at the same time allows some logic in its syntax, for instance string interpolation.
+It's convenient enough but at the same time allows some logic in its syntax, for instance string interpolation.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/config.py")
 import os
@@ -421,7 +421,7 @@ from sqrt_data_service.api import DBConn
 from sqrt_data_service.models import FileHash
 #+end_src
 
-First, calculate the hashsum:
+First, calculate the hash sum:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/api/hash.py")
 def md5sum(filename):
     res = subprocess.run(
@@ -541,7 +541,7 @@ if __name__ == '__main__':
 #+end_src
 
 * Agent API
-Some of the code of the service is duplicated here, but I don't care that much.
+Some =service= code is duplicated here, but I don't care that much.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_agent/api/__init__.py")
 from .config import *

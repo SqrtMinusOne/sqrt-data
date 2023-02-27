@@ -41,7 +41,7 @@ First, we have to get a WakaTime dump.
 
 It seems like there's no way to initiate the export via the API, but somehow it's possible to download the dump.
 
-The first task checks if the dump is available, and downloads it if so.
+The first task checks whether the dump is available, and downloads it if so.
 #+begin_src python
 @task
 def download_wakatime_dump():
@@ -109,13 +109,13 @@ A single datum normally consists of a few common time-related fields:
 - =total_seconds=
 - =text=
 
-=grand_total= is an aggredate datum for the given day.
+=grand_total= is an aggregate datum for the given day.
 
-=categories=, =dependencies=, =editors=, =languages=, =machines= and =operating_systems= are arrays of such datums, extended with the following fields:
+=categories=, =dependencies=, =editors=, =languages=, =machines= and =operating_systems= are arrays of such data, extended with the following fields:
 - =name= - the name of editor/category/etc
 - =percent= - percent for this day
 
-=projects= is a array of projects, which were active during the day. A project consists of the following fields
+=projects= is an array of projects, which were active during the day. A project consists of the following fields
 - =name= - the name of the project
 - =branches=
 - =categories=
@@ -129,7 +129,7 @@ A single datum normally consists of a few common time-related fields:
 
 =grand_total= is once again an aggregate datum for the given project for the given day.
 
-=branches=, =categories=, =dependencies=, =editors=, =entries=, =languages=, =machines= and =operating_systems= are arrays of such "extended datums".
+=branches=, =categories=, =dependencies=, =editors=, =entries=, =languages=, =machines= and =operating_systems= are arrays of such "extended data".
 
 For the purposes of my analysis, I merge the data from the =projects= arrays.
 #+begin_src python
@@ -177,7 +177,7 @@ def parse_wakatime_dump(data):
     return dfs
 #+end_src
 
-In the end we have 9 DataFrames of "extended datums" with =date= and =project= attributes.
+In the end we have 9 DataFrames of "extended data" with =date= and =project= attributes.
 
 ** Store dump
 Finally, store the data into database:

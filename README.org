@@ -21,7 +21,7 @@ The basic dataflow is as follows:
 - The VPS processes that with [[https://docs.prefect.io/][Prefect 2]] flows and stores the results to a PostgreSQL database
 - [[https://www.metabase.com/][Metabase]] queries the database and creates nice dashboards.
 
-The entire thing is written in Python and more or less follows the path of least resistance.
+The entire thing is written in Python and more or less follows the path of the least resistance.
 
 Yeah, and it most definitely won't work for anyone except me.
 
@@ -37,7 +37,7 @@ Some files are related to particular datasources:
 | [[file:org/mpd.org][mpd.org]]            | [[https://www.musicpd.org/][Music Player Daemon]]               | Complete   | OK                         |
 | [[file:org/locations.org][locations.org]]      | My CSVs with location history     | Complete   | OK                         |
 | [[file:org/wakatime.org][wakatime.org]]       | [[https://wakatime.org][WakaTime]]                          | Partial    | OK                         |
-| [[file:org/messengers.org][messengers.org]]     | Telegram + aggegation             | Manual     | OK                         |
+| [[file:org/messengers.org][messengers.org]]     | Telegram + aggregation             | Manual     | OK                         |
 | [[file:org/vk.org][vk.org]]             | [[https://vk.com][VK]], GDPR dump                     | Manual     | Left the network, whatever |
 | [[file:org/archive/sleep.org][sleep.org]]          | [[https://sleep.urbandroid.org/][Sleep As Android]]                  | Manual     | Archive                    |
 | [[file:org/archive/google-android.org][google-android.org]] | [[https://takeout.google.com/][Google Takeout]], Android activity  | Manual     | Archive                    |

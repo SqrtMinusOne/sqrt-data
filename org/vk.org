@@ -7,7 +7,7 @@
 
 Also, I don't use the platform for anything but messaging, so I won't parse anything else.
 
-Edit <2022-11-28>: I've left the platform, but I keep the this file to merge data with other messengers.
+Edit <2022-11-28>: I've left the platform, but I keep this file to merge data with other messengers.
 
 * Flow
 :PROPERTIES:
