@@ -2,6 +2,7 @@
 import argparse
 from prefect import flow
 
+from .app_intervals import process_app_intervals
 from .load import aw_load_desktop
 from .load_android import aw_load_android
 from .postprocessing import aw_postprocessing_init, aw_postprocessing_dispatch
@@ -13,6 +14,7 @@ def aw_process(init=False):
     if init:
         aw_postprocessing_init()
     aw_postprocessing_dispatch()
+    process_app_intervals()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

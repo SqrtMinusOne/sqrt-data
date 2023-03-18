@@ -46,6 +46,10 @@ Nightly = 'firefox'
 Chromium-browser = 'Chromium'
 unknown = 'Emacs' # EXWM
 
+[aw.app_interval]
+interval = 900
+apps = ['Emacs', 'Alacritty', 'st-256color', 'Gnome-terminal', 'Xfce4-terminal']
+
 [vk]
 author = 'Pavel Korytov'
 schema = 'vk'

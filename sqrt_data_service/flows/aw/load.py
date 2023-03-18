@@ -1,4 +1,4 @@
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):1]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):1]]
 import furl
 import tldextract
 import glob
@@ -15,9 +15,9 @@ from sqrt_data_service.api import settings, DBConn, FileHasher
 from sqrt_data_service.models import Base
 from sqrt_data_service.models.aw import AfkStatus, CurrentWindow, AppEditor, WebTab
 from sqrt_data_service.common.locations import LocationMatcher
-# Loading (Dekstop):1 ends here
+# Loading (Desktop):1 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):2]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):2]]
 @task(name='aw-desktop-get-dataframes')
 def get_dataframes(db):
     logger = get_run_logger()
@@ -46,18 +46,18 @@ def get_dataframes(db):
     for type, files in files_by_type.items():
         logger.info(f'{type}: {"; ".join(files)}')
     return dfs_by_type
-# Loading (Dekstop):2 ends here
+# Loading (Desktop):2 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):3]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):3]]
 MODELS = {
     'afkstatus': AfkStatus,
     'currentwindow': CurrentWindow,
     'app_editor_activity': AppEditor,
     'web_tab_current': WebTab
 }
-# Loading (Dekstop):3 ends here
+# Loading (Desktop):3 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):4]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):4]]
 @task(name='aw-desktop-get-records')
 def get_records(type_, df):
     loc = LocationMatcher()
@@ -87,17 +87,17 @@ def get_records(type_, df):
     df['location'] = [l[0] for l in locations]
     df['timestamp'] = [l[1] for l in locations]
     return df.to_dict(orient='records')
-# Loading (Dekstop):4 ends here
+# Loading (Desktop):4 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):5]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):5]]
 @task(name='aw-desktop-insert-data')
 def insert_data(type_, entries, db):
     db.execute(
         pg_insert(MODELS[type_]).values(entries).on_conflict_do_nothing()
     )
-# Loading (Dekstop):5 ends here
+# Loading (Desktop):5 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):6]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):6]]
 @flow
 def aw_load_desktop():
     DBConn()
@@ -112,9 +112,9 @@ def aw_load_desktop():
                 insert_data(type_, entries, db)
                 logger.info(f'Inserted {len(entries)} records of type "{type_}"')
         db.commit()
-# Loading (Dekstop):6 ends here
+# Loading (Desktop):6 ends here
 
-# [[file:../../../org/aw.org::*Loading (Dekstop)][Loading (Dekstop):7]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):7]]
 if __name__ == '__main__':
     aw_load_desktop()
-# Loading (Dekstop):7 ends here
+# Loading (Desktop):7 ends here

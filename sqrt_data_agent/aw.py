@@ -111,11 +111,14 @@ def save_buckets(force=False):
 # Saving (Desktop):4 ends here
 
 # [[file:../org/aw.org::*Saving (Desktop)][Saving (Desktop):5]]
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(
         prog='sqrt_data_agent.aw'
     )
     parser.add_argument('-f', '--force', action='store_true')
     args = parser.parse_args()
     save_buckets(args.force)
+
+if __name__ == '__main__':
+    main()
 # Saving (Desktop):5 ends here
