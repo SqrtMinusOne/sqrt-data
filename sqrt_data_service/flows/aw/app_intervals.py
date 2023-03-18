@@ -11,7 +11,7 @@ import pandas as pd
 @task
 def extract_data(db=None):
     apps = ', '.join([f"'{app}'" for app in settings.aw.app_interval.apps])
-    sql = f"SELECT app, timestamp FROM aw.notafkwindow WHERE app in ({apps})"
+    sql = f"SELECT app, timestamp FROM aw.notafkwindow WHERE app in ({apps}) ORDER BY timestamp ASC"
     with DBConn.ensure_session(db) as db:
         data = db.execute(sa.text(sql)).all()
 
