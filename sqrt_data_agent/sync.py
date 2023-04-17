@@ -1,6 +1,7 @@
 # [[file:../org/core-new.org::*Sync][Sync:1]]
 import argparse
 import os
+import traceback
 import subprocess
 import socket
 from datetime import datetime
@@ -44,7 +45,10 @@ def sync_logs(force=False):
     if not force and check_today_sync():
         print('Already synced today!')
         return
-    save_library()
+    try:
+        save_library()
+    except Exception:
+        traceback.print_exc()
     save_buckets(force)
     subprocess.run(
         [

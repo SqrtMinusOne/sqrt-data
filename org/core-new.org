@@ -610,6 +610,7 @@ I use [[https://github.com/deajan/osync][osync]] as the sync engine. I even made
 #+begin_src python
 import argparse
 import os
+import traceback
 import subprocess
 import socket
 from datetime import datetime
@@ -660,7 +661,10 @@ def sync_logs(force=False):
     if not force and check_today_sync():
         print('Already synced today!')
         return
-    save_library()
+    try:
+        save_library()
+    except Exception:
+        traceback.print_exc()
     save_buckets(force)
     subprocess.run(
         [
@@ -668,7 +672,7 @@ def sync_logs(force=False):
             f'--target={settings.sync.target}'
         ],
         env={
-            **os.environ,
+            ,**os.environ,
             'RSYNC_EXCLUDE_PATTERN': 'sync.log',
             'CREATE_DIRS': 'yes',
             'REMOTE_HOST_PING': 'false',
