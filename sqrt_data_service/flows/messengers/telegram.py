@@ -3,14 +3,16 @@ import argparse
 import json
 import pandas as pd
 import sqlalchemy as sa
-from prefect import task, flow, get_run_logger
 from collections import deque
 
 from sqrt_data_service.api import settings, DBConn
 # Telegram:1 ends here
 
 # [[file:../../../org/messengers.org::*Telegram][Telegram:2]]
-@task
+__all__ = ['telegram_load']
+# Telegram:2 ends here
+
+# [[file:../../../org/messengers.org::*Telegram][Telegram:3]]
 def parse_json(file_name):
     with open(file_name) as f:
         data = json.load(f)
@@ -66,10 +68,9 @@ def parse_json(file_name):
     df = pd.DataFrame(messages)
     df.date = df.date.astype('datetime64[ns]')
     return df
-# Telegram:2 ends here
+# Telegram:3 ends here
 
-# [[file:../../../org/messengers.org::*Telegram][Telegram:3]]
-@task
+# [[file:../../../org/messengers.org::*Telegram][Telegram:4]]
 def store_df(df):
     DBConn()
     with DBConn.get_session() as db:
@@ -82,20 +83,10 @@ def store_df(df):
     df.to_sql(
         'telegram', schema='messengers', con=DBConn.engine, if_exists='append'
     )
-# Telegram:3 ends here
+# Telegram:4 ends here
 
-# [[file:../../../org/messengers.org::*Telegram][Telegram:4]]
-@flow
+# [[file:../../../org/messengers.org::*Telegram][Telegram:5]]
 def telegram_load(file_name):
     df = parse_json(file_name)
     store_df(df)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='sqrt_data_service.flows.messengers.telegram'
-    )
-    parser.add_argument('-p', '--path', required=True)
-    args = parser.parse_args()
-    telegram_load(args.path)
-# Telegram:4 ends here
+# Telegram:5 ends here

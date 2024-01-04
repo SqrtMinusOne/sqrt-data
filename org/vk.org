@@ -29,8 +29,11 @@ from sqrt_data_service.api import DBConn, settings
 from bs4 import BeautifulSoup
 from collections import deque
 from dateutil import parser
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
+#+end_src
+
+#+begin_src python
+__all__ = ['vk_load']
 #+end_src
 
 I don't understand why some dumps have labels in English and some in Russian. The only important difference between the versions is in the date format anyway.
@@ -136,7 +139,6 @@ def parse_file(path):
 
 Next, parse the directory for a single target:
 #+begin_src python
-@task
 def parse_directory(path):
     logger = get_run_logger()
     files = sorted([f for f in os.listdir(path) if f.endswith('html')])
@@ -164,7 +166,6 @@ def parse_directory(path):
 
 And store that in the database:
 #+begin_src python
-@task
 def store_directory(df):
     DBConn()
     df.to_sql(
@@ -177,7 +178,6 @@ def store_directory(df):
 
 The flow that calls the task for each element:
 #+begin_src python
-@flow
 def vk_load(directory):
     DBConn()
     schema = settings["vk"]["schema"]
@@ -200,45 +200,33 @@ def vk_load(directory):
             continue
         df = parse_directory(path)
         store_directory(df)
-
-if __name__ == '__main__':
-    arg_parser = argparse.ArgumentParser(
-        prog='sqrt_data_service.flows.vk.flow'
-    )
-    arg_parser.add_argument('-p', '--path', required=True)
-    args = arg_parser.parse_args()
-    vk_load(args.path)
 #+end_src
 
-* Deploy
+* CLI
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/vk/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/vk/cli.py") :comments link
 :END:
 
-Create the deployment:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
+
 from .flow import vk_load
 
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=vk_load,
-        name="vk_load",
-        work_queue_name=settings.prefect.queue,
-        parameters={"directory": '/home/pavel/logs-not-sync/vk'}
-    )
-    deployment.apply()
+__all__ = ['vk']
 
-if __name__ == '__main__':
-    create_deploy()
+@click.group()
+def vk():
+    pass
+
+@vk.command(help='Load VK', name='load')
+@click.option('--folder', type=click.Path(exists=True))
+def load_cmd():
+    vk_load(folder)
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.vk.deploy
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/vk/__init__.py")
+from .flow import *
+from .cli import *
 #+end_src
-
-To create a deployment until I've found a better way.

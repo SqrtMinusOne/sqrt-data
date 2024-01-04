@@ -5,7 +5,6 @@ import pathlib
 import subprocess
 import time
 
-from prefect import task, flow, get_run_logger
 import pandas as pd
 import sqlalchemy as sa
 
@@ -14,12 +13,15 @@ from sqrt_data_service.models import FileHash
 # Compression:1 ends here
 
 # [[file:../../../org/service.org::*Compression][Compression:2]]
-def get_date_group(timestamp):
-    return timestamp // (60 * 60 * 24 * settings['archive']['days'])
+__all__ = ['archive']
 # Compression:2 ends here
 
 # [[file:../../../org/service.org::*Compression][Compression:3]]
-@task
+def get_date_group(timestamp):
+    return timestamp // (60 * 60 * 24 * settings['archive']['days'])
+# Compression:3 ends here
+
+# [[file:../../../org/service.org::*Compression][Compression:4]]
 def get_files_to_compress():
     with DBConn.get_session() as db:
         file_entries = db.execute(sa.select(FileHash)).scalars()
@@ -51,10 +53,9 @@ def get_files_to_compress():
         for (date_group, dir), g in df.groupby(['date_group', 'dir'])
         if dir not in settings['archive']['exclude_dirs']
     ]
-# Compression:3 ends here
+# Compression:4 ends here
 
-# [[file:../../../org/service.org::*Compression][Compression:4]]
-@task
+# [[file:../../../org/service.org::*Compression][Compression:5]]
 def compress(groups):
     logger = get_run_logger()
     if len(groups) == 0:
@@ -85,16 +86,11 @@ def compress(groups):
                 db.execute(sa.delete(FileHash).where(FileHash.file_name == f))
                 logger.info('Removed %s from HashDict', f)
         db.commit()
-# Compression:4 ends here
+# Compression:5 ends here
 
-# [[file:../../../org/service.org::*Compression][Compression:5]]
-@flow
+# [[file:../../../org/service.org::*Compression][Compression:6]]
 def archive():
     DBConn()
     groups = get_files_to_compress()
     compress(groups)
-
-
-if __name__ == '__main__':
-    archive()
-# Compression:5 ends here
+# Compression:6 ends here

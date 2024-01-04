@@ -3,7 +3,6 @@ import json
 import pandas as pd
 
 from tqdm import tqdm
-from prefect import task, flow, get_run_logger
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
 from sqrt_data_service.models import Base
@@ -11,7 +10,10 @@ from sqrt_data_service.common.locations import LocationMatcher
 # Loading (Android):1 ends here
 
 # [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):2]]
-@task(name='aw-android-get-dataframes')
+__all__ = ['aw_load_android']
+# Loading (Android):2 ends here
+
+# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):3]]
 def get_dataframes(db):
     logger = get_run_logger()
     hasher = FileHasher()
@@ -38,10 +40,9 @@ def get_dataframes(db):
             df = df.set_index('id')
             dfs_by_type[bucket['type']] = df
     return dfs_by_type
-# Loading (Android):2 ends here
+# Loading (Android):3 ends here
 
-# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):3]]
-@task(name='aw-android-get-records')
+# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):4]]
 def get_records(type_, df):
     loc = LocationMatcher()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -51,15 +52,14 @@ def get_records(type_, df):
     df['location'] = [l[0] for l in locations]
     df['timestamp'] = [l[1] for l in locations]
     return df
-# Loading (Android):3 ends here
+# Loading (Android):4 ends here
 
-# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):4]]
+# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):5]]
 TABLE_NAMES = {
     'os.lockscreen.unlocks': 'android_unlock',
     'currentwindow': 'android_currentwindow'
 }
 
-@flow
 def aw_load_android():
     DBConn()
     DBConn.create_schema('aw', Base)
@@ -82,9 +82,4 @@ def aw_load_android():
             print(df)
         hasher.save_hash(settings["aw"]["android_file"])
         db.commit()
-# Loading (Android):4 ends here
-
-# [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):5]]
-if __name__ == '__main__':
-    aw_load_android()
 # Loading (Android):5 ends here

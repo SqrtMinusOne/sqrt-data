@@ -5,12 +5,28 @@ import os
 from sqrt_data_service.api import FileHasher, DBConn
 from sqrt_data_service.models import Base
 
+from sqrt_data_service.flows.aw import aw
+from sqrt_data_service.flows.messengers import msg
+from sqrt_data_service.flows.mpd import mpd
+from sqrt_data_service.flows.service import service
+from sqrt_data_service.flows.vk import vk
+from sqrt_data_service.flows.wakatime import waka
+
 @click.group()
 def cli():
     print(f'CWD: {os.getcwd()}')
 # CLI entrypoint:1 ends here
 
 # [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:2]]
+cli.add_command(aw)
+cli.add_command(msg)
+cli.add_command(mpd)
+cli.add_command(service)
+cli.add_command(vk)
+cli.add_command(waka)
+# CLI entrypoint:2 ends here
+
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:3]]
 @click.group(help='Hashes')
 def hash():
     pass
@@ -33,9 +49,9 @@ def save_hash(file_name):
     hasher.save_hash(file_name)
 
 cli.add_command(hash)
-# CLI entrypoint:2 ends here
+# CLI entrypoint:3 ends here
 
-# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:3]]
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:4]]
 @click.group(help='Database')
 def db():
     pass
@@ -47,9 +63,9 @@ def create_schema(name):
     DBConn.create_schema(name, Base)
 
 cli.add_command(db)
-# CLI entrypoint:3 ends here
+# CLI entrypoint:4 ends here
 
-# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:4]]
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:5]]
 if __name__ == '__main__':
     cli()
-# CLI entrypoint:4 ends here
+# CLI entrypoint:5 ends here

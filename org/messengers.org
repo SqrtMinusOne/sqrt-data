@@ -14,16 +14,18 @@ import argparse
 import json
 import pandas as pd
 import sqlalchemy as sa
-from prefect import task, flow, get_run_logger
 from collections import deque
 
 from sqrt_data_service.api import settings, DBConn
 #+end_src
 
+#+begin_src python
+__all__ = ['telegram_load']
+#+end_src
+
 Parse the JSON. The structure is more or less self-explanatory, there are lots of "about" fields, etc.
 
 #+begin_src python
-@task
 def parse_json(file_name):
     with open(file_name) as f:
         data = json.load(f)
@@ -83,7 +85,6 @@ def parse_json(file_name):
 
 Store the dataframe.
 #+begin_src python
-@task
 def store_df(df):
     DBConn()
     with DBConn.get_session() as db:
@@ -100,19 +101,9 @@ def store_df(df):
 
 The final flow:
 #+begin_src python
-@flow
 def telegram_load(file_name):
     df = parse_json(file_name)
     store_df(df)
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='sqrt_data_service.flows.messengers.telegram'
-    )
-    parser.add_argument('-p', '--path', required=True)
-    args = parser.parse_args()
-    telegram_load(args.path)
 #+end_src
 
 * Aggregation
@@ -126,14 +117,16 @@ import argparse
 import json
 import pandas as pd
 import sqlalchemy as sa
-from prefect import task, flow, get_run_logger
 
 from sqrt_data_service.api import settings, DBConn
 #+end_src
 
+#+begin_src python
+__all__ = ['messengers_aggregate']
+#+end_src
+
 Load the mapping file.
 #+begin_src python
-@task
 def load_mapping():
     df = pd.read_csv(settings.messengers.mapping_file)
     with DBConn.get_session() as db:
@@ -177,7 +170,6 @@ MSG_VIEWS = """
 <<msg-views>>
 """
 
-@task
 def create_views():
     with DBConn.get_session() as db:
         db.execute(MSG_VIEWS)
@@ -187,54 +179,43 @@ def create_views():
 The flow.
 
 #+begin_src python
-@flow
 def messengers_aggregate():
     DBConn()
     load_mapping()
     create_views()
-
-
-if __name__ == '__main__':
-    messengers_aggregate()
 #+end_src
 
-* Deploy
+* CLI & init
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/cli.py") :comments link
 :END:
 
 Create the deployment:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
+
 from .telegram import telegram_load
 from .aggregate import messengers_aggregate
 
-def create_deploy():
-    deployment_1 = Deployment.build_from_flow(
-        flow=telegram_load,
-        name="telegram_load",
-        work_queue_name=settings.prefect.queue,
-        parameters={"file_name": '/home/pavel/logs-not-sync/telegram.json'}
-    )
-    deployment_1.apply()
+__all__ = ['msg']
 
-    deployment_2 = Deployment.build_from_flow(
-        flow=messengers_aggregate,
-        name="messengers_aggregate",
-        work_queue_name=settings.prefect.queue
-    )
-    deployment_2.apply()
+@click.group()
+def msg():
+    pass
 
-if __name__ == '__main__':
-    create_deploy()
+@msg.command(help='Load data from telegram', name='load-telegram')
+def telegram_cmd():
+    telegram_load()
+
+@msg.command(help='Aggregate data from messengers', name='aggregate')
+def aggregate_cmd():
+    messengers_aggregate()
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.vk.deploy
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/messengers/__init__.py")
+from .aggregate import *
+from .cli import *
+from .telegram import *
 #+end_src
-
-To create a deployment until I've found a better way.

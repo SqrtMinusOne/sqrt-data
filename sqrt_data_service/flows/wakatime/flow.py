@@ -5,14 +5,16 @@ import requests
 import pandas as pd
 import json
 from collections import deque
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
 # Flow:1 ends here
 
+# [[file:../../../org/wakatime.org::*Flow][Flow:2]]
+__all__ = ['wakatime']
+# Flow:2 ends here
+
 # [[file:../../../org/wakatime.org::*Download dump][Download dump:1]]
-@task
 def download_wakatime_dump():
     logger = get_run_logger()
     key = base64.b64encode(str.encode(settings["waka"]["api_key"])
@@ -52,7 +54,6 @@ def download_wakatime_dump():
 # Download dump:1 ends here
 
 # [[file:../../../org/wakatime.org::*Parse dump][Parse dump:1]]
-@task
 def parse_wakatime_dump(data):
     deques = {}
 
@@ -97,7 +98,6 @@ def parse_wakatime_dump(data):
 # Parse dump:1 ends here
 
 # [[file:../../../org/wakatime.org::*Store dump][Store dump:1]]
-@task
 def store_wakatime_dump(dfs):
     DBConn.create_schema(settings['waka']['schema'])
     for name, df in tqdm(dfs.items()):
@@ -111,7 +111,6 @@ def store_wakatime_dump(dfs):
 # Store dump:1 ends here
 
 # [[file:../../../org/wakatime.org::*Store dump][Store dump:2]]
-@flow
 def wakatime():
     DBConn()
     hasher = FileHasher()
@@ -132,8 +131,3 @@ def wakatime():
     store_wakatime_dump(dfs)
     hasher.save_hash(dump_file)
 # Store dump:2 ends here
-
-# [[file:../../../org/wakatime.org::*Store dump][Store dump:3]]
-if __name__ == '__main__':
-    wakatime()
-# Store dump:3 ends here

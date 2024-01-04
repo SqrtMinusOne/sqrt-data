@@ -8,7 +8,6 @@ import re
 import logging
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
@@ -18,7 +17,10 @@ from sqrt_data_service.common.locations import LocationMatcher
 # Loading (Desktop):1 ends here
 
 # [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):2]]
-@task(name='aw-desktop-get-dataframes')
+__all__ = ['aw_load_desktop']
+# Loading (Desktop):2 ends here
+
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):3]]
 def get_dataframes(db):
     logger = get_run_logger()
     files = glob.glob(
@@ -46,19 +48,18 @@ def get_dataframes(db):
     for type, files in files_by_type.items():
         logger.info(f'{type}: {"; ".join(files)}')
     return dfs_by_type
-# Loading (Desktop):2 ends here
+# Loading (Desktop):3 ends here
 
-# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):3]]
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):4]]
 MODELS = {
     'afkstatus': AfkStatus,
     'currentwindow': CurrentWindow,
     'app_editor_activity': AppEditor,
     'web_tab_current': WebTab
 }
-# Loading (Desktop):3 ends here
+# Loading (Desktop):4 ends here
 
-# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):4]]
-@task(name='aw-desktop-get-records')
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):5]]
 def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
@@ -87,18 +88,16 @@ def get_records(type_, df):
     df['location'] = [l[0] for l in locations]
     df['timestamp'] = [l[1] for l in locations]
     return df.to_dict(orient='records')
-# Loading (Desktop):4 ends here
+# Loading (Desktop):5 ends here
 
-# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):5]]
-@task(name='aw-desktop-insert-data')
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):6]]
 def insert_data(type_, entries, db):
     db.execute(
         pg_insert(MODELS[type_]).values(entries).on_conflict_do_nothing()
     )
-# Loading (Desktop):5 ends here
+# Loading (Desktop):6 ends here
 
-# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):6]]
-@flow
+# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):7]]
 def aw_load_desktop():
     DBConn()
     DBConn.create_schema('aw', Base)
@@ -112,9 +111,4 @@ def aw_load_desktop():
                 insert_data(type_, entries, db)
                 logger.info(f'Inserted {len(entries)} records of type "{type_}"')
         db.commit()
-# Loading (Desktop):6 ends here
-
-# [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):7]]
-if __name__ == '__main__':
-    aw_load_desktop()
 # Loading (Desktop):7 ends here

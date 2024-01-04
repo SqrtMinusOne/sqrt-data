@@ -1,6 +1,7 @@
 # [[file:../../../org/aw.org::*Post-processing][Post-processing:7]]
-from prefect import task, flow, get_run_logger
 from sqrt_data_service.api import settings, DBConn
+
+__all__ = ['aw_postprocessing_init', 'aw_postprocessing_dispatch']
 
 SQL = """
 drop procedure if exists aw.init_postprocessing();
@@ -155,7 +156,6 @@ end
 $$;
 """
 
-@task
 def update_settings(db):
     db.execute(
         f"""
@@ -167,21 +167,27 @@ def update_settings(db):
     """
     )
 
-@task
 def init_postprocessing(db):
     db.execute("CALL aw.init_postprocessing();")
 
-@task
 def create_afkwindow_views(db):
     db.execute("CALL aw.create_afkwindow_views();")
 
 
-@task
 def create_browser_views(db):
     db.execute("CALL aw.create_browser_views();")
 
 
-@flow
+def postprocess_notafkwindow(db):
+    db.execute("CALL aw.postprocess_notafkwindow();")
+
+def refresh_notafkwindow(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+
+def refresh_webtab(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
+
 def aw_postprocessing_init():
     DBConn()
     with DBConn.get_session() as db:
@@ -192,20 +198,6 @@ def aw_postprocessing_init():
         # create_browser_views
         db.commit()
 
-@task
-def postprocess_notafkwindow(db):
-    db.execute("CALL aw.postprocess_notafkwindow();")
-
-@task
-def refresh_notafkwindow(db):
-    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
-
-@task
-def refresh_webtab(db):
-    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
-    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
-
-@flow
 def aw_postprocessing_dispatch():
     DBConn()
     with DBConn.get_session() as db:

@@ -17,12 +17,15 @@ import pathlib
 import subprocess
 import time
 
-from prefect import task, flow, get_run_logger
 import pandas as pd
 import sqlalchemy as sa
 
 from sqrt_data_service.api import settings, DBConn
 from sqrt_data_service.models import FileHash
+#+end_src
+
+#+begin_src python
+__all__ = ['archive']
 #+end_src
 
 So, first we need to group files by dates. When the group is full, it is to be compressed.
@@ -34,7 +37,6 @@ def get_date_group(timestamp):
 
 The group is full if there is no chance of a file with this the today's timestamp appearing in that group:
 #+begin_src python
-@task
 def get_files_to_compress():
     with DBConn.get_session() as db:
         file_entries = db.execute(sa.select(FileHash)).scalars()
@@ -70,7 +72,6 @@ def get_files_to_compress():
 
 And the function to archive the files according the grouping:
 #+begin_src python
-@task
 def compress(groups):
     logger = get_run_logger()
     if len(groups) == 0:
@@ -105,46 +106,35 @@ def compress(groups):
 
 The flow:
 #+begin_src python
-@flow
 def archive():
     DBConn()
     groups = get_files_to_compress()
     compress(groups)
-
-
-if __name__ == '__main__':
-    archive()
 #+end_src
 
-* Deploy
+* CLI
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/service/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/service/cli.py") :comments link
 :END:
 
 Create the deployment:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
+
 from .compress import archive
 
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=archive,
-        name="archive",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 5 * * *"))
-    )
-    deployment.apply()
+@click.group()
+def service():
+    pass
 
-if __name__ == '__main__':
-    create_deploy()
+@service.command(help="Archive old files", name='archive')
+def archive_cmd():
+    archive()
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.service.deploy
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/service/__init__.py") :comments link
+from .cli import *
+from .compress import *
 #+end_src
-
-To create a deployment until I've found a better way.

@@ -12,9 +12,6 @@ root = '@format {env[HOME]}/logs-sync-debug'
 temp_data_folder = '/tmp/sqrt-data'
 cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
 
-[prefect]
-queue = 'main'
-
 [archive]
 days = 31
 timeout = 5

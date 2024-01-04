@@ -30,10 +30,13 @@ import requests
 import pandas as pd
 import json
 from collections import deque
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
+#+end_src
+
+#+begin_src python
+__all__ = ['wakatime']
 #+end_src
 
 ** Download dump
@@ -43,7 +46,6 @@ It seems like there's no way to initiate the export via the API, but somehow it'
 
 The first task checks whether the dump is available, and downloads it if so.
 #+begin_src python
-@task
 def download_wakatime_dump():
     logger = get_run_logger()
     key = base64.b64encode(str.encode(settings["waka"]["api_key"])
@@ -133,7 +135,6 @@ A single datum normally consists of a few common time-related fields:
 
 For the purposes of my analysis, I merge the data from the =projects= arrays.
 #+begin_src python
-@task
 def parse_wakatime_dump(data):
     deques = {}
 
@@ -182,7 +183,6 @@ In the end we have 9 DataFrames of "extended data" with =date= and =project= att
 ** Store dump
 Finally, store the data into database:
 #+begin_src python
-@task
 def store_wakatime_dump(dfs):
     DBConn.create_schema(settings['waka']['schema'])
     for name, df in tqdm(dfs.items()):
@@ -197,7 +197,6 @@ def store_wakatime_dump(dfs):
 
 Putting all of this together:
 #+begin_src python
-@flow
 def wakatime():
     DBConn()
     hasher = FileHasher()
@@ -219,41 +218,31 @@ def wakatime():
     hasher.save_hash(dump_file)
 #+end_src
 
-Execute the flow:
+* CLI & Init
+:PROPERTIES:
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/cli.py") :comments link
+:END:
+
+Click module:
 #+begin_src python
-if __name__ == '__main__':
+import click
+
+from sqrt_data_service.api import settings
+
+from .flow import wakatime
+
+__all__ = ['waka']
+
+@click.group()
+def waka():
+    pass
+
+@waka.command(help='Load WakaTime', name='load')
+def wakatime_cmd():
     wakatime()
 #+end_src
 
-* Deploy
-:PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/deploy.py") :comments link
-:END:
-
-Create the deployment:
-#+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
-
-from sqrt_data_service.api import settings
-from .flow import wakatime
-
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=wakatime,
-        name="wakatime-dump",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 0 * * *"))
-    )
-    deployment.apply()
-
-if __name__ == '__main__':
-    create_deploy()
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/__init__.py") :comments link
+from .flow import *
+from .cli import *
 #+end_src
-
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.wakatime.deploy
-#+end_src
-
-To create a deployment until I've found a better way.

@@ -10,11 +10,14 @@ from sqrt_data_service.api import DBConn, settings
 from bs4 import BeautifulSoup
 from collections import deque
 from dateutil import parser
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 # Flow:1 ends here
 
 # [[file:../../../org/vk.org::*Flow][Flow:2]]
+__all__ = ['vk_load']
+# Flow:2 ends here
+
+# [[file:../../../org/vk.org::*Flow][Flow:3]]
 def parse_date_english(date):
     is_edited = False
     if date.endswith(' (edited)'):
@@ -23,9 +26,9 @@ def parse_date_english(date):
     date = date[2:]
     date = parser.parse(date)
     return is_edited, date
-# Flow:2 ends here
+# Flow:3 ends here
 
-# [[file:../../../org/vk.org::*Flow][Flow:3]]
+# [[file:../../../org/vk.org::*Flow][Flow:4]]
 MONTHS = [
     'янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя',
     'дек'
@@ -42,9 +45,9 @@ def parse_date_russian(date):
     month = MONTHS.index(month) + 1
     date = parser.parse(time).replace(day=int(day), month=month, year=int(year))
     return is_edited, date
-# Flow:3 ends here
+# Flow:4 ends here
 
-# [[file:../../../org/vk.org::*Flow][Flow:4]]
+# [[file:../../../org/vk.org::*Flow][Flow:5]]
 def parse_file(path):
     with open(path, 'r', encoding='windows-1251') as f:
         soup = BeautifulSoup(f, features="html.parser")
@@ -99,10 +102,9 @@ def parse_file(path):
         }
     )
     return df
-# Flow:4 ends here
+# Flow:5 ends here
 
-# [[file:../../../org/vk.org::*Flow][Flow:5]]
-@task
+# [[file:../../../org/vk.org::*Flow][Flow:6]]
 def parse_directory(path):
     logger = get_run_logger()
     files = sorted([f for f in os.listdir(path) if f.endswith('html')])
@@ -126,10 +128,9 @@ def parse_directory(path):
         df.is_outgoing = df.is_outgoing.astype(bool)
         df.is_edited = df.is_edited.astype(bool)
     return df
-# Flow:5 ends here
+# Flow:6 ends here
 
-# [[file:../../../org/vk.org::*Flow][Flow:6]]
-@task
+# [[file:../../../org/vk.org::*Flow][Flow:7]]
 def store_directory(df):
     DBConn()
     df.to_sql(
@@ -138,10 +139,9 @@ def store_directory(df):
         con=DBConn.engine,
         if_exists='append'
     )
-# Flow:6 ends here
+# Flow:7 ends here
 
-# [[file:../../../org/vk.org::*Flow][Flow:7]]
-@flow
+# [[file:../../../org/vk.org::*Flow][Flow:8]]
 def vk_load(directory):
     DBConn()
     schema = settings["vk"]["schema"]
@@ -164,12 +164,4 @@ def vk_load(directory):
             continue
         df = parse_directory(path)
         store_directory(df)
-
-if __name__ == '__main__':
-    arg_parser = argparse.ArgumentParser(
-        prog='sqrt_data_service.flows.vk.flow'
-    )
-    arg_parser.add_argument('-p', '--path', required=True)
-    args = arg_parser.parse_args()
-    vk_load(args.path)
-# Flow:7 ends here
+# Flow:8 ends here

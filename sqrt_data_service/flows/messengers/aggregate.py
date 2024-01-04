@@ -3,13 +3,15 @@ import argparse
 import json
 import pandas as pd
 import sqlalchemy as sa
-from prefect import task, flow, get_run_logger
 
 from sqrt_data_service.api import settings, DBConn
 # Aggregation:1 ends here
 
 # [[file:../../../org/messengers.org::*Aggregation][Aggregation:2]]
-@task
+__all__ = ['messengers_aggregate']
+# Aggregation:2 ends here
+
+# [[file:../../../org/messengers.org::*Aggregation][Aggregation:3]]
 def load_mapping():
     df = pd.read_csv(settings.messengers.mapping_file)
     with DBConn.get_session() as db:
@@ -21,9 +23,9 @@ def load_mapping():
     df.to_sql(
         'mapping', schema='messengers', con=DBConn.engine, if_exists='append'
     )
-# Aggregation:2 ends here
+# Aggregation:3 ends here
 
-# [[file:../../../org/messengers.org::*Aggregation][Aggregation:4]]
+# [[file:../../../org/messengers.org::*Aggregation][Aggregation:5]]
 MSG_VIEWS = """
 CREATE OR REPLACE VIEW messengers.all_messages AS
 (
@@ -48,21 +50,15 @@ GROUP BY target, sender, is_outgoing, is_group, date, messenger
 ORDER BY date DESC;
 """
 
-@task
 def create_views():
     with DBConn.get_session() as db:
         db.execute(MSG_VIEWS)
         db.commit()
-# Aggregation:4 ends here
+# Aggregation:5 ends here
 
-# [[file:../../../org/messengers.org::*Aggregation][Aggregation:5]]
-@flow
+# [[file:../../../org/messengers.org::*Aggregation][Aggregation:6]]
 def messengers_aggregate():
     DBConn()
     load_mapping()
     create_views()
-
-
-if __name__ == '__main__':
-    messengers_aggregate()
-# Aggregation:5 ends here
+# Aggregation:6 ends here

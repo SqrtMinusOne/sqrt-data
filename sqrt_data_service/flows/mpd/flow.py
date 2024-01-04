@@ -4,7 +4,6 @@ import sys
 import logging
 import glob
 
-from prefect import task, flow, get_run_logger
 import pandas as pd
 from tqdm import tqdm
 
@@ -16,8 +15,11 @@ from sqrt_data_service.models import Base
 from sqrt_data_service.models.mpd import MpdSong, SongListened
 # Flow:1 ends here
 
+# [[file:../../../org/mpd.org::*Flow][Flow:2]]
+__init__ = ['load_mpd']
+# Flow:2 ends here
+
 # [[file:../../../org/mpd.org::*Loading the library][Loading the library:1]]
-@task
 def load_library():
     csv_path = os.path.expanduser(settings['mpd']['library_csv'])
     hasher = FileHasher()
@@ -65,7 +67,6 @@ def load_library():
 # Loading the library:1 ends here
 
 # [[file:../../../org/mpd.org::*Loading the logs][Loading the logs:1]]
-@task
 def get_logs_to_put():
     folder = os.path.expanduser(settings['mpd']['log_folder'])
     logs = glob.glob(f"{folder}/*.csv")
@@ -75,7 +76,6 @@ def get_logs_to_put():
 # Loading the logs:1 ends here
 
 # [[file:../../../org/mpd.org::*Loading the logs][Loading the logs:2]]
-@task
 def put_log(filename):
     logger = get_run_logger()
     logger.info('Reading %s', filename)
@@ -101,7 +101,7 @@ def put_log(filename):
         db.commit()
 # Loading the logs:2 ends here
 
-# [[file:../../../org/mpd.org::*Postprocessing][Postprocessing:2]]
+# [[file:../../../org/mpd.org::*Post-processing][Post-processing:2]]
 MPD_VIEW = """
 drop view if exists mpd."MpdSongListened";
 create view mpd."MpdSongListened" as
@@ -117,13 +117,11 @@ left join mpd."MpdSong" S ON L.song_id = S.id
 order by time asc;
 """
 
-@task
 def create_views():
     DBConn.engine.execute(MPD_VIEW)
-# Postprocessing:2 ends here
+# Post-processing:2 ends here
 
 # [[file:../../../org/mpd.org::*Flow][Flow:1]]
-@flow
 def load_mpd():
     DBConn()
     logger = get_run_logger()
@@ -136,8 +134,3 @@ def load_mpd():
 
     create_views()
 # Flow:1 ends here
-
-# [[file:../../../org/mpd.org::*Flow][Flow:2]]
-if __name__ == '__main__':
-    load_mpd()
-# Flow:2 ends here

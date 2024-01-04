@@ -56,9 +56,6 @@ root = '@format {env[HOME]}/logs-sync-debug'
 temp_data_folder = '/tmp/sqrt-data'
 cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
 
-[prefect]
-queue = 'main'
-
 [archive]
 days = 31
 timeout = 5
@@ -392,8 +389,7 @@ Because the data is synced via files, I need to track changes in these files. Th
 
 I used to use [[https://github.com/RaRe-Technologies/sqlitedict][SqliteDict]] for that purpose, but at some point realized that it's easier to store them in the database.
 
-With that said, here's the model definition
-
+With that said, here's the model definition:
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/models/hash.py")
 import sqlalchemy as sa
 from sqrt_data_service.models import Base
@@ -473,7 +469,9 @@ class FileHasher:
 :PROPERTIES:
 :header-args:python+: :tangle (my/org-prj-dir "sqrt_data_service/manage.py")
 :END:
-There used to me more stuff in the CLI before I migrated to [[https://www.prefect.io/][prefect.io]], but some things still remain. My CLI library of choice is [[https://click.palletsprojects.com/en/8.0.x/][click]].
+My CLI library of choice is [[https://click.palletsprojects.com/en/8.0.x/][click]].
+
+I tried managing this with [[https://www.prefect.io/][Prefect]], but it was too much of a hassle.
 
 #+begin_src python
 import click
@@ -482,9 +480,25 @@ import os
 from sqrt_data_service.api import FileHasher, DBConn
 from sqrt_data_service.models import Base
 
+from sqrt_data_service.flows.aw import aw
+from sqrt_data_service.flows.messengers import msg
+from sqrt_data_service.flows.mpd import mpd
+from sqrt_data_service.flows.service import service
+from sqrt_data_service.flows.vk import vk
+from sqrt_data_service.flows.wakatime import waka
+
 @click.group()
 def cli():
     print(f'CWD: {os.getcwd()}')
+#+end_src
+
+#+begin_src python
+cli.add_command(aw)
+cli.add_command(msg)
+cli.add_command(mpd)
+cli.add_command(service)
+cli.add_command(vk)
+cli.add_command(waka)
 #+end_src
 
 A few commands to work with hashes:
@@ -946,7 +960,6 @@ The =Dockerfile= for the program:
 FROM python:3.10-buster
 # Install sqrt-data
 WORKDIR "app/"
-RUN pip install prefect
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
@@ -991,40 +1004,15 @@ services:
             MB_DB_PASS: ${POSTGRES_PASSWORD}
             MB_DB_HOST: postgres
             JAVA_OPTS: "-Dc3p0.maxPoolSize=5 "
-    sqrt_data_orion:
-        container_name: "sqrt-data-orion"
-        build: .
-        ports:
-            - 127.0.0.1:4200:4200
-        restart: unless-stopped
-        networks:
-            - postgres
-        depends_on:
-            - postgres
-        command: prefect orion start
-        environment:
-            PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
-            PREFECT_ORION_API_HOST: 0.0.0.0
-
-    sqrt_data_agent:
-        container_name: "sqrt-data-agent"
+    sqrt_data_tasks:
+        container_name: "sqrt-data-tasks"
         build: .
         restart: unless-stopped
         networks:
             - postgres
         depends_on:
             - postgres
-        volumes:
-            - type: bind
-              source: ./config.service.toml
-              target: /config.service.toml
-            - type: bind
-              source: ~/logs-sync-debug
-              target: /root/logs-sync-debug
-            - ./config.service.local.toml:/app/config.service.local.toml
-        command: prefect agent start -q "main"
-        environment:
-            PREFECT_API_URL: 'http://sqrt_data_orion:4200/api/'
+        command: python -m sqrt_data_service.manage tasks
 
     backups:
         image: prodrigestivill/postgres-backup-local
@@ -1037,7 +1025,7 @@ services:
             - postgres
         environment:
             - POSTGRES_HOST=postgres
-            - POSTGRES_DB=data,metabase,orion
+            - POSTGRES_DB=data,metabase
             - POSTGRES_USER=${POSTGRES_USER}
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             - POSTGRES_EXTRA_OPTS=-Fc -Z9
