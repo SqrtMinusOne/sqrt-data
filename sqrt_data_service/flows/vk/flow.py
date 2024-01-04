@@ -106,7 +106,6 @@ def parse_file(path):
 
 # [[file:../../../org/vk.org::*Flow][Flow:6]]
 def parse_directory(path):
-    logger = get_run_logger()
     files = sorted([f for f in os.listdir(path) if f.endswith('html')])
     df = pd.DataFrame(
         {
@@ -123,7 +122,7 @@ def parse_directory(path):
         df_ = parse_file(os.path.join(path, file))
         df = pd.concat([df, df_])
     df = df.sort_values(by='date').reset_index(drop=True)
-    logger.info(f'Parsed: {path}')
+    logging.info(f'Parsed VK: {path}')
     if len(df) > 0:
         df.is_outgoing = df.is_outgoing.astype(bool)
         df.is_edited = df.is_edited.astype(bool)

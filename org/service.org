@@ -73,9 +73,8 @@ def get_files_to_compress():
 And the function to archive the files according the grouping:
 #+begin_src python
 def compress(groups):
-    logger = get_run_logger()
     if len(groups) == 0:
-        logger.info('Nothing to archive')
+        logging.info('Nothing to archive')
         return
 
     with DBConn.get_session() as db:
@@ -86,7 +85,7 @@ def compress(groups):
 
         for date_group, dir, files in groups:
             archive_name = f'{os.path.relpath(os.path.dirname(files[0]), os.path.expanduser(settings["general"]["root"])).replace("/", "_")}_{int(date_group)}.tar.gz'
-            logger.info(
+            logging.info(
                 'Creating archive %s with %d files', archive_name, len(files)
             )
             subprocess.run(
@@ -100,7 +99,7 @@ def compress(groups):
         for f in list(files):
             if not os.path.exists(f):
                 db.execute(sa.delete(FileHash).where(FileHash.file_name == f))
-                logger.info('Removed %s from HashDict', f)
+                logging.info('Removed %s from HashDict', f)
         db.commit()
 #+end_src
 

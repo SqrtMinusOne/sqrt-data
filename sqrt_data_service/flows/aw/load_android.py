@@ -15,10 +15,9 @@ __all__ = ['aw_load_android']
 
 # [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):3]]
 def get_dataframes(db):
-    logger = get_run_logger()
     hasher = FileHasher()
     if not hasher.is_updated(settings["aw"]["android_file"], db):
-        logger.info('Android already loaded')
+        logging.info('Android already loaded')
         return
     dfs_by_type = {}
     with open(settings["aw"]["android_file"], 'r') as f:
@@ -45,7 +44,7 @@ def get_dataframes(db):
 # [[file:../../../org/aw.org::*Loading (Android)][Loading (Android):4]]
 def get_records(type_, df):
     loc = LocationMatcher()
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     locations = df.apply(
         lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
     )

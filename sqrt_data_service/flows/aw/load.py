@@ -22,14 +22,13 @@ __all__ = ['aw_load_desktop']
 
 # [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):3]]
 def get_dataframes(db):
-    logger = get_run_logger()
     files = glob.glob(
         f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
     )
     dfs_by_type = {}
     files_by_type = {}
     hasher = FileHasher()
-    for f in files:
+    for f in tqdm(files):
         if not hasher.is_updated(f, db):
             continue
         try:
@@ -45,8 +44,8 @@ def get_dataframes(db):
             dfs_by_type[type_] = [df]
             files_by_type[type_] = [f]
         hasher.save_hash(f, db)
-    for type, files in files_by_type.items():
-        logger.info(f'{type}: {"; ".join(files)}')
+    # for type, files in files_by_type.items():
+    #     logging.info(f'AW {type}: {"; ".join(files)}')
     return dfs_by_type
 # Loading (Desktop):3 ends here
 
@@ -60,6 +59,13 @@ MODELS = {
 # Loading (Desktop):4 ends here
 
 # [[file:../../../org/aw.org::*Loading (Desktop)][Loading (Desktop):5]]
+def safe_furl_no_params(url):
+    try:
+        return furl.furl(url).remove(args=True, fragment=True).url
+    except ValueError:
+        logging.warning('Bad URL: %s', url)
+        return url
+
 def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
@@ -75,13 +81,13 @@ def get_records(type_, df):
             for url in df['url']
         ]
         df['url_no_params'] = [
-            furl.furl(url).remove(args=True, fragment=True).url
+            safe_furl_no_params(url)
             for url in df['url']
         ]
     if type_ == 'app_editor_activity':
         if 'branch' in df.columns:
             df = df.drop('branch', axis=1)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     locations = df.apply(
         lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
     )
@@ -101,14 +107,15 @@ def insert_data(type_, entries, db):
 def aw_load_desktop():
     DBConn()
     DBConn.create_schema('aw', Base)
-    logger = get_run_logger()
     with DBConn.get_session() as db:
         dfs_by_type = get_dataframes(db)
 
         for type_, dfs in tqdm(dfs_by_type.items()):
             for df in dfs:
+                if len(df) > 10000:
+                    logging.info(f'Inserting a large df ({len(df)}) of type "{type_}"')
                 entries = get_records(type_, df)
                 insert_data(type_, entries, db)
-                logger.info(f'Inserted {len(entries)} records of type "{type_}"')
+                logging.info(f'Inserted {len(entries)} records of type "{type_}"')
         db.commit()
 # Loading (Desktop):7 ends here

@@ -47,6 +47,53 @@ unknown = 'Emacs' # EXWM
 interval = 900
 apps = ['Emacs', 'Alacritty', 'st-256color', 'Gnome-terminal', 'Xfce4-terminal']
 
+[projects]
+index = '@format {this.general.root}/data/index.json'
+
+[logging]
+version = 1
+
+[logging.formatters.simple]
+format = '%(level_color)s%(asctime)s  %(levelname)-6s %(message)s%(reset)s'
+datefmt = '%Y-%m-%d %H:%M:%S'
+class = 'sqrt_data_service.common.logging.ColorFormatter'
+
+[logging.formatters.file]
+format = '[%(asctime)s] %(levelname)s %(filename)s: %(message)s'
+datefmt = '%Y-%m-%d %H:%M:%S'
+
+[logging.formatters.multiline]
+format = "Level: %(levelname)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
+datefmt = '%Y-%m-%d %H:%M:%S'
+
+[logging.handlers.console]
+class = 'logging.StreamHandler'
+level = 'DEBUG'
+formatter = 'simple'
+stream = 'ext://sys.stdout'
+
+[logging.handlers.app_file]
+class = 'logging.handlers.TimedRotatingFileHandler'
+formatter = 'file'
+filename = './logs/app.log'
+level = 'INFO'
+backupCount = 5
+when = 'midnight'
+encoding = 'utf-8'
+
+[logging.handlers.error_file]
+class = 'logging.handlers.TimedRotatingFileHandler'
+formatter = 'multiline'
+filename = './logs/err.log'
+level = 'ERROR'
+backupCount = 50
+when = 'midnight'
+encoding = 'utf-8'
+
+[logging.root]
+handlers = ['console', 'app_file', 'error_file']
+level = 'INFO'
+
 [vk]
 author = 'Pavel Korytov'
 schema = 'vk'

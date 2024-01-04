@@ -206,8 +206,9 @@ def msg():
     pass
 
 @msg.command(help='Load data from telegram', name='load-telegram')
-def telegram_cmd():
-    telegram_load()
+@click.option('-f', '--file', 'file', required=True)
+def telegram_cmd(file):
+    telegram_load(file)
 
 @msg.command(help='Aggregate data from messengers', name='aggregate')
 def aggregate_cmd():

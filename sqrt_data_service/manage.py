@@ -4,6 +4,7 @@ import os
 
 from sqrt_data_service.api import FileHasher, DBConn
 from sqrt_data_service.models import Base
+from sqrt_data_service.common.logging import configure_logging
 
 from sqrt_data_service.flows.aw import aw
 from sqrt_data_service.flows.messengers import msg
@@ -14,6 +15,7 @@ from sqrt_data_service.flows.wakatime import waka
 
 @click.group()
 def cli():
+    configure_logging()
     print(f'CWD: {os.getcwd()}')
 # CLI entrypoint:1 ends here
 
