@@ -50,10 +50,10 @@ old_factory = logging.getLogRecordFactory()
 
 def record_factory(*args, **kwargs):
     record = old_factory(*args, **kwargs)
-    scope = 'unknown'
-    if os.environ.get('IS_DRAMATIQ_WORKER', 'false') == 'true':
-        scope = 'dramatiq'
-    record.scope = scope
+    if scope := os.getenv('SCOPE'):
+        record.scope = scope
+    else:
+        record.scope = 'unknown'
     return record
 
 
@@ -61,6 +61,6 @@ def configure_logging():
     if not os.path.exists("./logs"):
         os.mkdir("./logs")
     logging.config.dictConfig(settings.logging)
-    # logging.setLogRecordFactory(record_factory)
+    logging.setLogRecordFactory(record_factory)
     sys.excepthook = log_exceptions
 # Logging:1 ends here

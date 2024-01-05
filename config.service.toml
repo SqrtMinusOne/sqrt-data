@@ -54,16 +54,16 @@ index = '@format {this.general.root}/data/index.json'
 version = 1
 
 [logging.formatters.simple]
-format = '%(level_color)s%(asctime)s  %(levelname)-6s %(message)s%(reset)s'
+format = '%(level_color)s%(asctime)s %(scope)-10s %(levelname)-6s %(message)s%(reset)s'
 datefmt = '%Y-%m-%d %H:%M:%S'
 class = 'sqrt_data_service.common.logging.ColorFormatter'
 
 [logging.formatters.file]
-format = '[%(asctime)s] %(levelname)s %(filename)s: %(message)s'
+format = '[%(asctime)s] %(scope)s-10s %(levelname)s-6 %(filename)s: %(message)s'
 datefmt = '%Y-%m-%d %H:%M:%S'
 
 [logging.formatters.multiline]
-format = "Level: %(levelname)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
+format = "Level: %(levelname)s\nScope:%(scope)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
 datefmt = '%Y-%m-%d %H:%M:%S'
 
 [logging.handlers.console]

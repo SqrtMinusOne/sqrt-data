@@ -98,16 +98,16 @@ index = '@format {this.general.root}/data/index.json'
 version = 1
 
 [logging.formatters.simple]
-format = '%(level_color)s%(asctime)s  %(levelname)-6s %(message)s%(reset)s'
+format = '%(level_color)s%(asctime)s %(scope)-10s %(levelname)-6s %(message)s%(reset)s'
 datefmt = '%Y-%m-%d %H:%M:%S'
 class = 'sqrt_data_service.common.logging.ColorFormatter'
 
 [logging.formatters.file]
-format = '[%(asctime)s] %(levelname)s %(filename)s: %(message)s'
+format = '[%(asctime)s] %(scope)s-10s %(levelname)s-6 %(filename)s: %(message)s'
 datefmt = '%Y-%m-%d %H:%M:%S'
 
 [logging.formatters.multiline]
-format = "Level: %(levelname)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
+format = "Level: %(levelname)s\nScope:%(scope)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
 datefmt = '%Y-%m-%d %H:%M:%S'
 
 [logging.handlers.console]
@@ -566,10 +566,10 @@ old_factory = logging.getLogRecordFactory()
 
 def record_factory(*args, **kwargs):
     record = old_factory(*args, **kwargs)
-    scope = 'unknown'
-    if os.environ.get('IS_DRAMATIQ_WORKER', 'false') == 'true':
-        scope = 'dramatiq'
-    record.scope = scope
+    if scope := os.getenv('SCOPE'):
+        record.scope = scope
+    else:
+        record.scope = 'unknown'
     return record
 
 
@@ -577,7 +577,7 @@ def configure_logging():
     if not os.path.exists("./logs"):
         os.mkdir("./logs")
     logging.config.dictConfig(settings.logging)
-    # logging.setLogRecordFactory(record_factory)
+    logging.setLogRecordFactory(record_factory)
     sys.excepthook = log_exceptions
 #+end_src
 
@@ -604,6 +604,8 @@ from sqrt_data_service.flows.service import service
 from sqrt_data_service.flows.vk import vk
 from sqrt_data_service.flows.wakatime import waka
 
+from .tasks import run_tasks
+
 @click.group()
 def cli():
     configure_logging()
@@ -617,6 +619,14 @@ cli.add_command(mpd)
 cli.add_command(service)
 cli.add_command(vk)
 cli.add_command(waka)
+#+end_src
+
+Run tasks:
+#+begin_src python
+@cli.command(help='Run recurring tasks', name='tasks')
+def tasks():
+    configure_logging()
+    run_tasks()
 #+end_src
 
 A few commands to work with hashes:
@@ -676,6 +686,48 @@ if __name__ == '__main__':
     cli()
 #+end_src
 
+** Tasks
+:PROPERTIES:
+:header-args:python+: :tangle (my/org-prj-dir "sqrt_data_service/tasks.py")
+:END:
+#+begin_src python
+import click
+import logging
+import os
+import schedule
+import subprocess
+import time
+
+__all__ = ["run_tasks"]
+
+TASKS = [
+    (schedule.every().day.at("03:00"), ["aw", "process-all"], "aw"),
+    (schedule.every().day.at("01:00"), ["mpd", "load"], "mpd"),
+    (schedule.every().day.at("05:00"), ["service", "archive"], "archive"),
+    (schedule.every().day.at("00:00"), ["waka", "load"], "wakatime"),
+]
+
+def make_job(command, scope):
+    def job():
+        logging.info("Running %s", command)
+        subprocess.run(command, env={**os.environ, "SCOPE": scope})
+
+    return job
+
+def run_tasks():
+    for schedule_, command, scope in TASKS:
+        schedule_.do(make_job(command, scope))
+        logging.info("Scheduled %s", command)
+
+    while True:
+        n = schedule.idle_seconds()
+        if n is None:
+            break
+        elif n > 0:
+            logging.info("Sleeping for %d seconds", n)
+            time.sleep(n)
+        schedule.run_pending()
+#+end_src
 * Agent API
 Some =service= code is duplicated here, but I don't care that much.
 

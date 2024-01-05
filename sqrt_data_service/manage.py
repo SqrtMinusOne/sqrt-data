@@ -13,6 +13,8 @@ from sqrt_data_service.flows.service import service
 from sqrt_data_service.flows.vk import vk
 from sqrt_data_service.flows.wakatime import waka
 
+from .tasks import run_tasks
+
 @click.group()
 def cli():
     configure_logging()
@@ -29,6 +31,13 @@ cli.add_command(waka)
 # CLI entrypoint:2 ends here
 
 # [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:3]]
+@cli.command(help='Run recurring tasks', name='tasks')
+def tasks():
+    configure_logging()
+    run_tasks()
+# CLI entrypoint:3 ends here
+
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:4]]
 @click.group(help='Hashes')
 def hash():
     pass
@@ -51,9 +60,9 @@ def save_hash(file_name):
     hasher.save_hash(file_name)
 
 cli.add_command(hash)
-# CLI entrypoint:3 ends here
+# CLI entrypoint:4 ends here
 
-# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:4]]
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:5]]
 @click.group(help='Database')
 def db():
     pass
@@ -65,9 +74,9 @@ def create_schema(name):
     DBConn.create_schema(name, Base)
 
 cli.add_command(db)
-# CLI entrypoint:4 ends here
+# CLI entrypoint:5 ends here
 
-# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:5]]
+# [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:6]]
 if __name__ == '__main__':
     cli()
-# CLI entrypoint:5 ends here
+# CLI entrypoint:6 ends here
