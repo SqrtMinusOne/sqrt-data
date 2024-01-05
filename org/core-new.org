@@ -1197,7 +1197,7 @@ services:
 
     backups:
         image: prodrigestivill/postgres-backup-local
-        restart: always
+        restart: unless-stopped
         volumes:
             - ./backups:/backups
         networks:
