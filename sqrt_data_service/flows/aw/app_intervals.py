@@ -1,6 +1,5 @@
 # [[file:../../../org/aw.org::*App Interval][App Interval:1]]
 from tqdm import tqdm
-from prefect import flow, task
 from sqrt_data_service.api import settings, DBConn
 
 import sqlalchemy as sa
@@ -8,7 +7,10 @@ import pandas as pd
 # App Interval:1 ends here
 
 # [[file:../../../org/aw.org::*App Interval][App Interval:2]]
-@task
+__all__ = ['process_app_intervals']
+# App Interval:2 ends here
+
+# [[file:../../../org/aw.org::*App Interval][App Interval:3]]
 def extract_data(db=None):
     apps = ', '.join([f"'{app}'" for app in settings.aw.app_interval.apps])
     sql = f"SELECT app, timestamp FROM aw.notafkwindow WHERE app in ({apps}) ORDER BY timestamp ASC"
@@ -22,10 +24,9 @@ def extract_data(db=None):
         except KeyError:
             app_timestamps[app] = [timestamp]
     return app_timestamps
-# App Interval:2 ends here
+# App Interval:3 ends here
 
-# [[file:../../../org/aw.org::*App Interval][App Interval:3]]
-@task
+# [[file:../../../org/aw.org::*App Interval][App Interval:4]]
 def process_data(app_timestamps):
     time_by_day = {}
     for app, timestamps in app_timestamps.items():
@@ -53,10 +54,9 @@ def process_data(app_timestamps):
             except KeyError:
                 time_by_day[app][date] = delta
     return time_by_day
-# App Interval:3 ends here
+# App Interval:4 ends here
 
-# [[file:../../../org/aw.org::*App Interval][App Interval:4]]
-@task
+# [[file:../../../org/aw.org::*App Interval][App Interval:5]]
 def save_data(time_by_day):
     data = []
     for app, times_per_app in time_by_day.items():
@@ -69,17 +69,13 @@ def save_data(time_by_day):
         con=DBConn.engine,
         if_exists="replace",
     )
-# App Interval:4 ends here
+# App Interval:5 ends here
 
-# [[file:../../../org/aw.org::*App Interval][App Interval:5]]
-@flow
+# [[file:../../../org/aw.org::*App Interval][App Interval:6]]
 def process_app_intervals():
     DBConn()
     with DBConn.get_session() as db:
         raw_data = extract_data(db)
         time_by_day = process_data(raw_data)
         save_data(time_by_day)
-
-if __name__ == "__main__":
-    process_app_intervals()
-# App Interval:5 ends here
+# App Interval:6 ends here

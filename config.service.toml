@@ -12,9 +12,6 @@ root = '@format {env[HOME]}/logs-sync-debug'
 temp_data_folder = '/tmp/sqrt-data'
 cli_log = '@format {env[HOME]}/.local/share/sqrt-data/cli.log'
 
-[prefect]
-queue = 'main'
-
 [archive]
 days = 31
 timeout = 5
@@ -49,6 +46,53 @@ unknown = 'Emacs' # EXWM
 [aw.app_interval]
 interval = 900
 apps = ['Emacs', 'Alacritty', 'st-256color', 'Gnome-terminal', 'Xfce4-terminal']
+
+[projects]
+index = '@format {this.general.root}/data/index.json'
+
+[logging]
+version = 1
+
+[logging.formatters.simple]
+format = '%(level_color)s%(asctime)s %(scope)-10s %(levelname)-6s %(message)s%(reset)s'
+datefmt = '%Y-%m-%d %H:%M:%S'
+class = 'sqrt_data_service.common.logging.ColorFormatter'
+
+[logging.formatters.file]
+format = '[%(asctime)s] %(scope)s-10s %(levelname)s-6 %(filename)s: %(message)s'
+datefmt = '%Y-%m-%d %H:%M:%S'
+
+[logging.formatters.multiline]
+format = "Level: %(levelname)s\nScope:%(scope)s\nTime: %(asctime)s\nProcess: %(process)d\nThread: %(threadName)s\nLogger: %(name)s\nPath: %(module)s:%(lineno)d\nFunction :%(funcName)s\nMessage: %(message)s\n\n"
+datefmt = '%Y-%m-%d %H:%M:%S'
+
+[logging.handlers.console]
+class = 'logging.StreamHandler'
+level = 'DEBUG'
+formatter = 'simple'
+stream = 'ext://sys.stdout'
+
+[logging.handlers.app_file]
+class = 'logging.handlers.TimedRotatingFileHandler'
+formatter = 'file'
+filename = './logs/app.log'
+level = 'INFO'
+backupCount = 5
+when = 'midnight'
+encoding = 'utf-8'
+
+[logging.handlers.error_file]
+class = 'logging.handlers.TimedRotatingFileHandler'
+formatter = 'multiline'
+filename = './logs/err.log'
+level = 'ERROR'
+backupCount = 50
+when = 'midnight'
+encoding = 'utf-8'
+
+[logging.root]
+handlers = ['console', 'app_file', 'error_file']
+level = 'INFO'
 
 [vk]
 author = 'Pavel Korytov'

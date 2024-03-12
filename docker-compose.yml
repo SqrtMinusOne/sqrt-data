@@ -33,29 +33,15 @@ services:
             MB_DB_PASS: ${POSTGRES_PASSWORD}
             MB_DB_HOST: postgres
             JAVA_OPTS: "-Dc3p0.maxPoolSize=5 "
-    sqrt_data_orion:
-        container_name: "sqrt-data-orion"
-        build: .
-        ports:
-            - 127.0.0.1:4200:4200
-        restart: unless-stopped
-        networks:
-            - postgres
-        depends_on:
-            - postgres
-        command: prefect orion start
-        environment:
-            PREFECT_ORION_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/orion"
-            PREFECT_ORION_API_HOST: 0.0.0.0
-
-    sqrt_data_agent:
-        container_name: "sqrt-data-agent"
+    sqrt_data_tasks:
+        container_name: "sqrt-data-tasks"
         build: .
         restart: unless-stopped
         networks:
             - postgres
         depends_on:
             - postgres
+        user: 1000:998
         volumes:
             - type: bind
               source: ./config.service.toml
@@ -63,14 +49,15 @@ services:
             - type: bind
               source: ~/logs-sync-debug
               target: /root/logs-sync-debug
-            - ./config.service.local.toml:/app/config.service.local.toml
-        command: prefect agent start -q "main"
-        environment:
-            PREFECT_API_URL: 'http://sqrt_data_orion:4200/api/'
+            - type: bind
+              source: ./logs.docker
+              target: /app/logs/
+            # - ./config.service.local.toml:/app/config.service.local.toml
+        command: python -m sqrt_data_service.manage tasks
 
     backups:
         image: prodrigestivill/postgres-backup-local
-        restart: always
+        restart: unless-stopped
         volumes:
             - ./backups:/backups
         networks:
@@ -79,13 +66,13 @@ services:
             - postgres
         environment:
             - POSTGRES_HOST=postgres
-            - POSTGRES_DB=data,metabase,orion
+            - POSTGRES_DB=data,metabase
             - POSTGRES_USER=${POSTGRES_USER}
             - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
             - POSTGRES_EXTRA_OPTS=-Fc -Z9
             - SCHEDULE=@daily
-            - BACKUP_KEEP_DAYS=7
-            - BACKUP_KEEP_WEEKS=4
+            - BACKUP_KEEP_DAYS=2
+            - BACKUP_KEEP_WEEKS=2
             - BACKUP_KEEP_MONTHS=2
             - BACKUP_SUFFIX=.dump
             - HEALTHCHECK_PORT=8080

@@ -4,17 +4,24 @@ import os
 import requests
 import pandas as pd
 import json
+import logging
 from collections import deque
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
+from sqrt_data_service.common.projects import (
+    ProjectMatcher,
+    fix_project_name,
+    get_project_id,
+)
 # Flow:1 ends here
 
+# [[file:../../../org/wakatime.org::*Flow][Flow:2]]
+__all__ = ['wakatime', 'wakatime_file']
+# Flow:2 ends here
+
 # [[file:../../../org/wakatime.org::*Download dump][Download dump:1]]
-@task
 def download_wakatime_dump():
-    logger = get_run_logger()
     key = base64.b64encode(str.encode(settings["waka"]["api_key"])
                           ).decode('utf-8')
     headers = {'Authorization': f'Basic {key}'}
@@ -24,12 +31,12 @@ def download_wakatime_dump():
     )
     data = r.json()['data']
     if len(data) == 0:
-        logger.info('No WakaTime dumps found')
+        logging.info('No WakaTime dumps found')
         return None
 
     dump_data = data[0]
     if dump_data['status'] != 'Completed':
-        logger.info('Dump not completed')
+        logging.info('Dump not completed')
         return None
 
     filename = f'wakatime-{dump_data["created_at"]}.json'
@@ -37,7 +44,7 @@ def download_wakatime_dump():
         os.path.expanduser(settings['general']['temp_data_folder']), filename
     )
     if os.path.exists(path):
-        logger.info('File already downloaded')
+        logging.info('File already downloaded')
         return path
     os.makedirs(
         os.path.expanduser(settings['general']['temp_data_folder']),
@@ -47,19 +54,21 @@ def download_wakatime_dump():
     dump = requests.get(dump_data['download_url'])
     with open(path, 'wb') as f:
         f.write(dump.content)
-    logger.info('WakaTime dump downloaded to %s', filename)
+    logging.info('WakaTime dump downloaded to %s', filename)
     return path
 # Download dump:1 ends here
 
 # [[file:../../../org/wakatime.org::*Parse dump][Parse dump:1]]
-@task
 def parse_wakatime_dump(data):
     deques = {}
 
+    matcher = ProjectMatcher()
     for day in tqdm(data['days']):
         date = day['date']
         for project in day['projects']:
-            name = project['name']
+            name = fix_project_name(project['name'])
+            root_project = matcher.get_project(name) or "unknown"
+
             for key, date_data in project.items():
                 if key == 'name':
                     continue
@@ -73,6 +82,7 @@ def parse_wakatime_dump(data):
                         {
                             "date": date,
                             "project": name,
+                            "root_project": root_project,
                             **date_data
                         }
                     )
@@ -82,6 +92,7 @@ def parse_wakatime_dump(data):
                             {
                                 "date": date,
                                 "project": name,
+                                "root_project": root_project,
                                 **datum
                             }
                         )
@@ -96,8 +107,43 @@ def parse_wakatime_dump(data):
     return dfs
 # Parse dump:1 ends here
 
+# [[file:../../../org/wakatime.org::*Parse dump][Parse dump:2]]
+def get_tree_df(df):
+    matcher = ProjectMatcher()
+    tree_data = {}
+    levels_per_item = {}
+    for datum in df.itertuples(index=False):
+        name = fix_project_name(datum.project)
+        path = matcher.get_path(name)
+        if path is None:
+            path = ["00 Unknown"]
+        for level, item in enumerate(path):
+            date = datum.date
+            levels_per_item[item] = level
+            try:
+                tree_data[item][date] += datum.total_minutes
+            except KeyError:
+                try:
+                    tree_data[item][date] = datum.total_minutes
+                except KeyError:
+                    tree_data[item] = {date: datum.total_minutes}
+    tree_list = []
+    for item, dates in tree_data.items():
+        for date, minutes in dates.items():
+            tree_list.append(
+                {
+                    "name": item,
+                    "date": date,
+                    "total_minutes": minutes,
+                    "level": levels_per_item[item],
+                    "is_project": matcher.get_is_project(item),
+                    "project_id": get_project_id(item)
+                }
+            )
+    return pd.DataFrame(tree_list)
+# Parse dump:2 ends here
+
 # [[file:../../../org/wakatime.org::*Store dump][Store dump:1]]
-@task
 def store_wakatime_dump(dfs):
     DBConn.create_schema(settings['waka']['schema'])
     for name, df in tqdm(dfs.items()):
@@ -108,32 +154,40 @@ def store_wakatime_dump(dfs):
             if_exists='replace'
         )
         print(df)
+    logging.info('WakaTime data stored')
 # Store dump:1 ends here
 
 # [[file:../../../org/wakatime.org::*Store dump][Store dump:2]]
-@flow
 def wakatime():
     DBConn()
     hasher = FileHasher()
-    logger = get_run_logger()
 
     dump_file = download_wakatime_dump()
     if dump_file is None:
         return
 
     if hasher.is_updated(dump_file) is False:
-        logger.info('Dump already processed')
+        logging.info('Dump already processed')
         return
 
     with open(dump_file, 'r') as f:
         data = json.load(f)
 
     dfs = parse_wakatime_dump(data)
+    tree_df = get_tree_df(df['grand_total'])
+    dfs['tree'] = tree_df
     store_wakatime_dump(dfs)
     hasher.save_hash(dump_file)
 # Store dump:2 ends here
 
 # [[file:../../../org/wakatime.org::*Store dump][Store dump:3]]
-if __name__ == '__main__':
-    wakatime()
+def wakatime_file(dump_file):
+    DBConn()
+    with open(dump_file, 'r') as f:
+        data = json.load(f)
+
+    dfs = parse_wakatime_dump(data)
+    tree_df = get_tree_df(dfs['grand_total'])
+    dfs['tree'] = tree_df
+    store_wakatime_dump(dfs)
 # Store dump:3 ends here

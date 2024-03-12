@@ -29,11 +29,20 @@ import os
 import requests
 import pandas as pd
 import json
+import logging
 from collections import deque
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
+from sqrt_data_service.common.projects import (
+    ProjectMatcher,
+    fix_project_name,
+    get_project_id,
+)
+#+end_src
+
+#+begin_src python
+__all__ = ['wakatime', 'wakatime_file']
 #+end_src
 
 ** Download dump
@@ -43,9 +52,7 @@ It seems like there's no way to initiate the export via the API, but somehow it'
 
 The first task checks whether the dump is available, and downloads it if so.
 #+begin_src python
-@task
 def download_wakatime_dump():
-    logger = get_run_logger()
     key = base64.b64encode(str.encode(settings["waka"]["api_key"])
                           ).decode('utf-8')
     headers = {'Authorization': f'Basic {key}'}
@@ -55,12 +62,12 @@ def download_wakatime_dump():
     )
     data = r.json()['data']
     if len(data) == 0:
-        logger.info('No WakaTime dumps found')
+        logging.info('No WakaTime dumps found')
         return None
 
     dump_data = data[0]
     if dump_data['status'] != 'Completed':
-        logger.info('Dump not completed')
+        logging.info('Dump not completed')
         return None
 
     filename = f'wakatime-{dump_data["created_at"]}.json'
@@ -68,7 +75,7 @@ def download_wakatime_dump():
         os.path.expanduser(settings['general']['temp_data_folder']), filename
     )
     if os.path.exists(path):
-        logger.info('File already downloaded')
+        logging.info('File already downloaded')
         return path
     os.makedirs(
         os.path.expanduser(settings['general']['temp_data_folder']),
@@ -78,7 +85,7 @@ def download_wakatime_dump():
     dump = requests.get(dump_data['download_url'])
     with open(path, 'wb') as f:
         f.write(dump.content)
-    logger.info('WakaTime dump downloaded to %s', filename)
+    logging.info('WakaTime dump downloaded to %s', filename)
     return path
 #+end_src
 
@@ -133,14 +140,16 @@ A single datum normally consists of a few common time-related fields:
 
 For the purposes of my analysis, I merge the data from the =projects= arrays.
 #+begin_src python
-@task
 def parse_wakatime_dump(data):
     deques = {}
 
+    matcher = ProjectMatcher()
     for day in tqdm(data['days']):
         date = day['date']
         for project in day['projects']:
-            name = project['name']
+            name = fix_project_name(project['name'])
+            root_project = matcher.get_project(name) or "unknown"
+
             for key, date_data in project.items():
                 if key == 'name':
                     continue
@@ -154,7 +163,8 @@ def parse_wakatime_dump(data):
                         {
                             "date": date,
                             "project": name,
-                            **date_data
+                            "root_project": root_project,
+                            ,**date_data
                         }
                     )
                 else:
@@ -163,7 +173,8 @@ def parse_wakatime_dump(data):
                             {
                                 "date": date,
                                 "project": name,
-                                **datum
+                                "root_project": root_project,
+                                ,**datum
                             }
                         )
 
@@ -179,10 +190,45 @@ def parse_wakatime_dump(data):
 
 In the end we have 9 DataFrames of "extended data" with =date= and =project= attributes.
 
+#+begin_src python
+def get_tree_df(df):
+    matcher = ProjectMatcher()
+    tree_data = {}
+    levels_per_item = {}
+    for datum in df.itertuples(index=False):
+        name = fix_project_name(datum.project)
+        path = matcher.get_path(name)
+        if path is None:
+            path = ["00 Unknown"]
+        for level, item in enumerate(path):
+            date = datum.date
+            levels_per_item[item] = level
+            try:
+                tree_data[item][date] += datum.total_minutes
+            except KeyError:
+                try:
+                    tree_data[item][date] = datum.total_minutes
+                except KeyError:
+                    tree_data[item] = {date: datum.total_minutes}
+    tree_list = []
+    for item, dates in tree_data.items():
+        for date, minutes in dates.items():
+            tree_list.append(
+                {
+                    "name": item,
+                    "date": date,
+                    "total_minutes": minutes,
+                    "level": levels_per_item[item],
+                    "is_project": matcher.get_is_project(item),
+                    "project_id": get_project_id(item)
+                }
+            )
+    return pd.DataFrame(tree_list)
+#+end_src
+
 ** Store dump
 Finally, store the data into database:
 #+begin_src python
-@task
 def store_wakatime_dump(dfs):
     DBConn.create_schema(settings['waka']['schema'])
     for name, df in tqdm(dfs.items()):
@@ -193,67 +239,75 @@ def store_wakatime_dump(dfs):
             if_exists='replace'
         )
         print(df)
+    logging.info('WakaTime data stored')
 #+end_src
 
 Putting all of this together:
 #+begin_src python
-@flow
 def wakatime():
     DBConn()
     hasher = FileHasher()
-    logger = get_run_logger()
 
     dump_file = download_wakatime_dump()
     if dump_file is None:
         return
 
     if hasher.is_updated(dump_file) is False:
-        logger.info('Dump already processed')
+        logging.info('Dump already processed')
         return
 
     with open(dump_file, 'r') as f:
         data = json.load(f)
 
     dfs = parse_wakatime_dump(data)
+    tree_df = get_tree_df(df['grand_total'])
+    dfs['tree'] = tree_df
     store_wakatime_dump(dfs)
     hasher.save_hash(dump_file)
 #+end_src
 
-Execute the flow:
 #+begin_src python
-if __name__ == '__main__':
-    wakatime()
+def wakatime_file(dump_file):
+    DBConn()
+    with open(dump_file, 'r') as f:
+        data = json.load(f)
+
+    dfs = parse_wakatime_dump(data)
+    tree_df = get_tree_df(dfs['grand_total'])
+    dfs['tree'] = tree_df
+    store_wakatime_dump(dfs)
 #+end_src
 
-* Deploy
+* CLI & Init
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/cli.py") :comments link
 :END:
 
-Create the deployment:
+Click module:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
-from .flow import wakatime
 
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=wakatime,
-        name="wakatime-dump",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 0 * * *"))
-    )
-    deployment.apply()
+from .flow import wakatime, wakatime_file
 
-if __name__ == '__main__':
-    create_deploy()
+__all__ = ['waka']
+
+@click.group()
+def waka():
+    pass
+
+@waka.command(help='Load WakaTime', name='load')
+def wakatime_cmd():
+    wakatime()
+
+@waka.command(help='Load WakaTime File', name='load-file')
+@click.option('--file', '-f', help='File to load')
+def wakatime_file_cmd(file):
+    wakatime_file(file)
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.wakatime.deploy
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/wakatime/__init__.py") :comments link
+from .flow import *
+from .cli import *
 #+end_src
-
-To create a deployment until I've found a better way.

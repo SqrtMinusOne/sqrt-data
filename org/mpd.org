@@ -300,7 +300,6 @@ import sys
 import logging
 import glob
 
-from prefect import task, flow, get_run_logger
 import pandas as pd
 from tqdm import tqdm
 
@@ -312,22 +311,23 @@ from sqrt_data_service.models import Base
 from sqrt_data_service.models.mpd import MpdSong, SongListened
 #+end_src
 
+#+begin_src python
+__init__ = ['load_mpd']
+#+end_src
+
 ** Loading the library
 First, load the library:
 
 #+begin_src python
-@task
 def load_library():
     csv_path = os.path.expanduser(settings['mpd']['library_csv'])
     hasher = FileHasher()
 
-    logger = get_run_logger()
-
     if not hasher.is_updated(csv_path):
-        logger.info('MPD library already saved, skipping')
+        logging.info('MPD library already saved, skipping')
         return
 
-    logger.info('Saving MPD Library')
+    logging.info('Saving MPD Library')
     df = pd.read_csv(csv_path)
     DBConn.create_schema('mpd', Base)
 
@@ -360,7 +360,7 @@ def load_library():
         hasher.save_hash(csv_path, db)
         db.commit()
 
-        logger.info(f'Saved {len(song_data)} records')
+        logging.info(f'Saved {len(song_data)} records')
 #+end_src
 
 ** Loading the logs
@@ -368,7 +368,6 @@ Second, load the logs:
 
 Getting a list of logs to load:
 #+begin_src python
-@task
 def get_logs_to_put():
     folder = os.path.expanduser(settings['mpd']['log_folder'])
     logs = glob.glob(f"{folder}/*.csv")
@@ -379,10 +378,8 @@ def get_logs_to_put():
 
 Save one log file:
 #+begin_src python
-@task
 def put_log(filename):
-    logger = get_run_logger()
-    logger.info('Reading %s', filename)
+    logging.info('Reading %s', filename)
     df = pd.read_csv(filename)
     records = df.to_dict(orient='records')
     all_found = True
@@ -398,7 +395,7 @@ def put_log(filename):
                 listened = SongListened(song_id=song.id, time=record['time'])
                 db.merge(listened)
             else:
-                logger.error('Song %s not found', record['file'])
+                logging.error('Song %s not found', record['file'])
                 all_found = False
         if all_found:
             hasher.save_hash(filename, db)
@@ -427,7 +424,6 @@ MPD_VIEW = """
 <<mpd-view>>
 """
 
-@task
 def create_views():
     DBConn.engine.execute(MPD_VIEW)
 #+end_src
@@ -436,55 +432,44 @@ def create_views():
 
 Putting all this together:
 #+begin_src python
-@flow
 def load_mpd():
     DBConn()
-    logger = get_run_logger()
 
     load_library()
     logs = get_logs_to_put()
-    logger.info(f'Found unprocessed logs: {len(logs)}')
+    logging.info(f'Found unprocessed MPD logs: {len(logs)}')
     for log in logs:
         put_log(log)
+        logging.info(f'Processed MPD log: {log}')
 
     create_views()
 #+end_src
 
-Execute the flow:
-#+begin_src python
-if __name__ == '__main__':
-    load_mpd()
-#+end_src
-
-* Deploy
+* CLI
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/mpd/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/mpd/cli.py") :comments link
 :END:
 
 Create the deployment:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
+
 from .flow import load_mpd
 
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=load_mpd,
-        name="load-mpd",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 1 * * *"))
-    )
-    deployment.apply()
+__all__ = ['mpd']
 
-if __name__ == '__main__':
-    create_deploy()
+@click.group()
+def mpd():
+    pass
+
+@mpd.command(help='Load MPD', name='load')
+def load_mpd_cmd():
+    load_mpd()
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.mpd.deploy
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/mpd/__init__.py")
+from .flow import *
+from .cli import *
 #+end_src
-
-To create a deployment until I've found a better way.

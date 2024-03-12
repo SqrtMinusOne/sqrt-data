@@ -1,9 +1,9 @@
-FROM python:3.10-buster
+FROM mambaorg/micromamba:1.5.6
 # Install sqrt-data
-WORKDIR "app/"
-RUN pip install prefect
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+WORKDIR "/app/"
+COPY environment.yml .
+RUN micromamba env create -f environment.yml
 COPY . .
+ENV ENV_NAME=sqrt-data
 
 RUN mkdir /tmp/sqrt-data

@@ -330,7 +330,6 @@ import re
 import logging
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from prefect import task, flow, get_run_logger
 from tqdm import tqdm
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
@@ -339,18 +338,20 @@ from sqrt_data_service.models.aw import AfkStatus, CurrentWindow, AppEditor, Web
 from sqrt_data_service.common.locations import LocationMatcher
 #+end_src
 
+#+begin_src python
+__all__ = ['aw_load_desktop']
+#+end_src
+
 Get all the dataframes to load:
 #+begin_src python
-@task(name='aw-desktop-get-dataframes')
 def get_dataframes(db):
-    logger = get_run_logger()
     files = glob.glob(
         f'{os.path.expanduser(settings["aw"]["logs_folder"])}/*.csv'
     )
     dfs_by_type = {}
     files_by_type = {}
     hasher = FileHasher()
-    for f in files:
+    for f in tqdm(files):
         if not hasher.is_updated(f, db):
             continue
         try:
@@ -366,8 +367,8 @@ def get_dataframes(db):
             dfs_by_type[type_] = [df]
             files_by_type[type_] = [f]
         hasher.save_hash(f, db)
-    for type, files in files_by_type.items():
-        logger.info(f'{type}: {"; ".join(files)}')
+    # for type, files in files_by_type.items():
+    #     logging.info(f'AW {type}: {"; ".join(files)}')
     return dfs_by_type
 #+end_src
 
@@ -382,9 +383,14 @@ MODELS = {
 #+end_src
 
 Preprocessing the records.
-
 #+begin_src python
-@task(name='aw-desktop-get-records')
+def safe_furl_no_params(url):
+    try:
+        return furl.furl(url).remove(args=True, fragment=True).url
+    except ValueError:
+        logging.warning('Bad URL: %s', url)
+        return url
+
 def get_records(type_, df):
     loc = LocationMatcher()
     if type_ == 'afkstatus':
@@ -400,13 +406,13 @@ def get_records(type_, df):
             for url in df['url']
         ]
         df['url_no_params'] = [
-            furl.furl(url).remove(args=True, fragment=True).url
+            safe_furl_no_params(url)
             for url in df['url']
         ]
     if type_ == 'app_editor_activity':
         if 'branch' in df.columns:
             df = df.drop('branch', axis=1)
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     locations = df.apply(
         lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
     )
@@ -417,35 +423,28 @@ def get_records(type_, df):
 
 Insert data:
 #+begin_src python
-@task(name='aw-desktop-insert-data')
 def insert_data(type_, entries, db):
     db.execute(
         pg_insert(MODELS[type_]).values(entries).on_conflict_do_nothing()
     )
 #+end_src
 
-The flow to perform the loading:
+Perform the loading:
 #+begin_src python
-@flow
 def aw_load_desktop():
     DBConn()
     DBConn.create_schema('aw', Base)
-    logger = get_run_logger()
     with DBConn.get_session() as db:
         dfs_by_type = get_dataframes(db)
 
         for type_, dfs in tqdm(dfs_by_type.items()):
             for df in dfs:
+                if len(df) > 10000:
+                    logging.info(f'Inserting a large df ({len(df)}) of type "{type_}"')
                 entries = get_records(type_, df)
                 insert_data(type_, entries, db)
-                logger.info(f'Inserted {len(entries)} records of type "{type_}"')
+                logging.info(f'Inserted {len(entries)} records of type "{type_}"')
         db.commit()
-#+end_src
-
-Execute the flow:
-#+begin_src python
-if __name__ == '__main__':
-    aw_load_desktop()
 #+end_src
 ** Loading (Android)
 :PROPERTIES:
@@ -457,23 +456,25 @@ The required imports:
 #+begin_src python
 import json
 import pandas as pd
+import logging
 
 from tqdm import tqdm
-from prefect import task, flow, get_run_logger
 
 from sqrt_data_service.api import settings, DBConn, FileHasher
 from sqrt_data_service.models import Base
 from sqrt_data_service.common.locations import LocationMatcher
 #+end_src
 
+#+begin_src python
+__all__ = ['aw_load_android']
+#+end_src
+
 The function to get dataframes from the JSON file:
 #+begin_src python
-@task(name='aw-android-get-dataframes')
 def get_dataframes(db):
-    logger = get_run_logger()
     hasher = FileHasher()
     if not hasher.is_updated(settings["aw"]["android_file"], db):
-        logger.info('Android already loaded')
+        logging.info('Android already loaded')
         return
     dfs_by_type = {}
     with open(settings["aw"]["android_file"], 'r') as f:
@@ -499,10 +500,9 @@ def get_dataframes(db):
 
 Also, pre-processing the records.
 #+begin_src python
-@task(name='aw-android-get-records')
 def get_records(type_, df):
     loc = LocationMatcher()
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], format='ISO8601')
     locations = df.apply(
         lambda row: loc.get_location(row.timestamp, row.hostname), axis=1
     )
@@ -518,7 +518,6 @@ TABLE_NAMES = {
     'currentwindow': 'android_currentwindow'
 }
 
-@flow
 def aw_load_android():
     DBConn()
     DBConn.create_schema('aw', Base)
@@ -541,12 +540,6 @@ def aw_load_android():
             print(df)
         hasher.save_hash(settings["aw"]["android_file"])
         db.commit()
-#+end_src
-
-Execute the flow:
-#+begin_src python
-if __name__ == '__main__':
-    aw_load_android()
 #+end_src
 ** Post-processing
 :PROPERTIES:
@@ -750,14 +743,14 @@ $$;
 
 The Python part sets the database settings from the configuration file and executes the stuff above. I wanted to make a separate .sql file for that, but that would make packaging more complicated, so here goes noweb.
 #+begin_src python :noweb yes
-from prefect import task, flow, get_run_logger
 from sqrt_data_service.api import settings, DBConn
+
+__all__ = ['aw_postprocessing_init', 'aw_postprocessing_dispatch']
 
 SQL = """
 <<postprocess-sql>>
 """
 
-@task
 def update_settings(db):
     db.execute(
         f"""
@@ -769,21 +762,27 @@ def update_settings(db):
     """
     )
 
-@task
 def init_postprocessing(db):
     db.execute("CALL aw.init_postprocessing();")
 
-@task
 def create_afkwindow_views(db):
     db.execute("CALL aw.create_afkwindow_views();")
 
 
-@task
 def create_browser_views(db):
     db.execute("CALL aw.create_browser_views();")
 
 
-@flow
+def postprocess_notafkwindow(db):
+    db.execute("CALL aw.postprocess_notafkwindow();")
+
+def refresh_notafkwindow(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
+
+def refresh_webtab(db):
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
+    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
+
 def aw_postprocessing_init():
     DBConn()
     with DBConn.get_session() as db:
@@ -794,20 +793,6 @@ def aw_postprocessing_init():
         # create_browser_views
         db.commit()
 
-@task
-def postprocess_notafkwindow(db):
-    db.execute("CALL aw.postprocess_notafkwindow();")
-
-@task
-def refresh_notafkwindow(db):
-    db.execute("REFRESH MATERIALIZED VIEW aw.notafkwindow_group;")
-
-@task
-def refresh_webtab(db):
-    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_active;")
-    db.execute("REFRESH MATERIALIZED VIEW aw.webtab_group;")
-
-@flow
 def aw_postprocessing_dispatch():
     DBConn()
     with DBConn.get_session() as db:
@@ -826,16 +811,18 @@ Convert stats for certain apps to be compatible with [[file:wakatime.org][WakaTi
 
 #+begin_src python
 from tqdm import tqdm
-from prefect import flow, task
 from sqrt_data_service.api import settings, DBConn
 
 import sqlalchemy as sa
 import pandas as pd
 #+end_src
 
+#+begin_src python
+__all__ = ['process_app_intervals']
+#+end_src
+
 Get all timestamps for selected apps
 #+begin_src python
-@task
 def extract_data(db=None):
     apps = ', '.join([f"'{app}'" for app in settings.aw.app_interval.apps])
     sql = f"SELECT app, timestamp FROM aw.notafkwindow WHERE app in ({apps}) ORDER BY timestamp ASC"
@@ -853,7 +840,6 @@ def extract_data(db=None):
 
 Get total length of intervals per day:
 #+begin_src python
-@task
 def process_data(app_timestamps):
     time_by_day = {}
     for app, timestamps in app_timestamps.items():
@@ -885,7 +871,6 @@ def process_data(app_timestamps):
 
 Save data:
 #+begin_src python
-@task
 def save_data(time_by_day):
     data = []
     for app, times_per_app in time_by_day.items():
@@ -901,16 +886,12 @@ def save_data(time_by_day):
 #+end_src
 
 #+begin_src python
-@flow
 def process_app_intervals():
     DBConn()
     with DBConn.get_session() as db:
         raw_data = extract_data(db)
         time_by_day = process_data(raw_data)
         save_data(time_by_day)
-
-if __name__ == "__main__":
-    process_app_intervals()
 #+end_src
 
 ** Final flow
@@ -918,14 +899,15 @@ The flow that executes all other flows.
 
 #+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/main.py") :comments link
 import argparse
-from prefect import flow
 
 from .app_intervals import process_app_intervals
 from .load import aw_load_desktop
 from .load_android import aw_load_android
 from .postprocessing import aw_postprocessing_init, aw_postprocessing_dispatch
 
-@flow
+
+__all__ = ['aw_process']
+
 def aw_process(init=False):
     aw_load_desktop()
     aw_load_android()
@@ -933,46 +915,63 @@ def aw_process(init=False):
         aw_postprocessing_init()
     aw_postprocessing_dispatch()
     process_app_intervals()
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(
-        prog='sqrt_data_service.flows.aw.main'
-    )
-    parser.add_argument('-i', '--init', action='store_true')
-    args = parser.parse_args()
-    aw_process(args.init)
 #+end_src
 
-* Deploy
+* CLI & Init
 :PROPERTIES:
-:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/deploy.py") :comments link
+:header-args:python: :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/cli.py") :comments link
 :END:
 
-Create the deployment:
+Click module:
 #+begin_src python
-from prefect.deployments import Deployment
-from prefect.orion.schemas.schedules import CronSchedule
+import click
 
 from sqrt_data_service.api import settings
+
+from .app_intervals import process_app_intervals
+from .load import aw_load_desktop
+from .load_android import aw_load_android
+from .postprocessing import aw_postprocessing_init, aw_postprocessing_dispatch
 from .main import aw_process
 
-def create_deploy():
-    deployment = Deployment.build_from_flow(
-        flow=aw_process,
-        name="aw-process",
-        work_queue_name=settings.prefect.queue,
-        schedule=(CronSchedule(cron="0 3 * * *")),
-        parameters={"init": False}
-    )
-    deployment.apply()
 
-if __name__ == '__main__':
-    create_deploy()
+__all__ = ["aw"]
+
+@click.group()
+def aw():
+    pass
+
+@aw.command(help="Load desktop data", name="load-desktop")
+def aw_load_desktop_cmd():
+    aw_load_desktop()
+
+@aw.command(help="Load android data", name="load-android")
+def aw_load_android_cmd():
+    aw_load_android()
+
+@aw.command(help="Process app intervals", name="process-app-intervals")
+def aw_process_app_intervals_cmd():
+    process_app_intervals()
+
+@aw.command(help="Postprocessing init", name="postprocessing-init")
+def aw_postprocessing_init_cmd():
+    aw_postprocessing_init()
+
+@aw.command(help="Postprocessing dispatch", name="postprocessing-dispatch")
+def aw_postprocessing_dispatch_cmd():
+    aw_postprocessing_dispatch()
+
+@aw.command(help="Process all", name="process-all")
+def aw_process_all_cmd():
+    aw_process()
 #+end_src
 
-Run the following:
-#+begin_src bash :tangle no
-python -m sqrt_data_service.flows.aw.deploy
+And =__init__.py=:
+#+begin_src python :tangle (my/org-prj-dir "sqrt_data_service/flows/aw/__init__.py")
+from .app_intervals import *
+from .cli import *
+from .load_android import *
+from .load import *
+from .main import *
+from .postprocessing import *
 #+end_src
-
-To create a deployment until I've found a better way.
