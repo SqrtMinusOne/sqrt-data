@@ -1152,7 +1152,7 @@ version: "3.5"
 services:
     postgres:
         restart: unless-stopped
-        image: postgres
+        image: postgres:15
         container_name: "sqrt-data-postgres"
         ports:
             - 127.0.0.1:5432:5432
