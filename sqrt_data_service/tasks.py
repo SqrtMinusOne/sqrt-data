@@ -15,12 +15,17 @@ TASKS = [
     (schedule.every().day.at("00:00"), ["waka", "load"], "wakatime"),
 ]
 
+
 def make_job(command, scope):
     def job():
         logging.info("Running %s", command)
-        subprocess.run(command, env={**os.environ, "SCOPE": scope})
+        subprocess.run(
+            ["python", "-m", "sqrt_data_service", *command],
+            env={**os.environ, "SCOPE": scope},
+        )
 
     return job
+
 
 def run_tasks():
     for schedule_, command, scope in TASKS:
