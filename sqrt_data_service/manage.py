@@ -2,7 +2,7 @@
 import click
 import os
 
-from sqrt_data_service.api import FileHasher, DBConn
+from sqrt_data_service.api import FileHasher, DBConn, settings
 from sqrt_data_service.models import Base
 from sqrt_data_service.common.logging import configure_logging
 
@@ -18,7 +18,8 @@ from .tasks import run_tasks
 @click.group()
 def cli():
     configure_logging()
-    print(f'CWD: {os.getcwd()}')
+    os.makedirs(settings["general"]["temp_data_folder"], exist_ok=True)
+    print(f"CWD: {os.getcwd()}")
 # CLI entrypoint:1 ends here
 
 # [[file:../org/core-new.org::*CLI entrypoint][CLI entrypoint:2]]
